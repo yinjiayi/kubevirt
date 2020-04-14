@@ -86,6 +86,14 @@ http_file(
 )
 
 http_file(
+    name = "libvirt_libs_aarch64",
+    sha256 = "a67876b6840f7a5c7b4a1b2f385d31f2cf349f4c30c81c064edc556caa12ada0",
+    urls = [
+        "https://copr-be.cloud.fedoraproject.org/results/%40virtmaint-sig/for-kubevirt/fedora-30-aarch64/01113245-libvirt/libvirt-libs-5.0.0-2.fc30.aarch64.rpm",
+    ],
+)
+
+http_file(
     name = "libvirt_devel",
     sha256 = "e34ca39bb94786b901a626143527f86cae1b6f1c8d1414165465d89e146a612e",
     urls = [
@@ -100,6 +108,14 @@ http_file(
     urls = [
         "https://copr-be.cloud.fedoraproject.org/results/%40virtmaint-sig/for-kubevirt/fedora-30-ppc64le/01113510-libvirt/libvirt-devel-5.0.0-2.fc30.ppc64le.rpm",
         "https://storage.googleapis.com/builddeps/45ddd9ba4508c72c4b6a6f03c2198ae4f918fa1324abf566e7b2e80ab51618f2",
+    ],
+)
+
+http_file(
+    name = "libvirt_devel_aarch64",
+    sha256 = "e1482b87bad09ab47a3aa32a0ad5c7b5d4fda66e6ce461d99ca661b09303e7c5",
+    urls = [
+        "https://copr-be.cloud.fedoraproject.org/results/%40virtmaint-sig/for-kubevirt/fedora-30-aarch64/01113245-libvirt/libvirt-devel-5.0.0-2.fc30.aarch64.rpm",
     ],
 )
 
@@ -123,6 +139,14 @@ http_file(
 )
 
 http_file(
+    name = "alpine_image_aarch64",
+    sha256 = "1a37be6e94bf2e102e9997c3c5bd433787299640a42d3df1597fd9dc5e1a81c7",
+    urls = [
+        "http://dl-cdn.alpinelinux.org/alpine/v3.11/releases/aarch64/alpine-virt-3.11.5-aarch64.iso",
+    ],
+)
+
+http_file(
     name = "cirros_image",
     sha256 = "a8dd75ecffd4cdd96072d60c2237b448e0c8b2bc94d57f10fdbc8c481d9005b8",
     urls = [
@@ -141,6 +165,14 @@ http_file(
 )
 
 http_file(
+    name = "cirros_image_aarch64",
+    sha256 = "46c4bd31c1b39152bafe3265c8e3551dd6bc672dfee6713dc736f5e20a348e63",
+    urls = [
+        "https://download.cirros-cloud.net/0.5.0/cirros-0.5.0-aarch64-disk.img",
+    ],
+)
+
+http_file(
     name = "fedora_image",
     sha256 = "423a4ce32fa32c50c11e3d3ff392db97a762533b81bef9d00599de518a7469c8",
     urls = [
@@ -155,6 +187,14 @@ http_file(
     urls = [
         "https://kojipkgs.fedoraproject.org/compose/32/Fedora-32-20200422.0/compose/Cloud/ppc64le/images/Fedora-Cloud-Base-32-1.6.ppc64le.qcow2",
         "https://storage.googleapis.com/builddeps/dd989a078d641713c55720ba3e4320b204ade6954e2bfe4570c8058dc36e2e5d",
+    ],
+)
+
+http_file(
+    name = "fedora_image_aarch64",
+    sha256 = "b367755c664a2d7a26955bbfff985855adfa2ca15e908baf15b4b176d68d3967",
+    urls = [
+        "https://dl.fedoraproject.org/pub/fedora/linux/releases/32/Cloud/aarch64/images/Fedora-Cloud-Base-32-1.6.aarch64.qcow2",
     ],
 )
 
@@ -305,6 +345,24 @@ load(
 container_repositories()
 
 http_file(
+    name = "go_puller_linux_aarch64",
+    executable = True,
+    sha256 = "433133e05182aaffe8842194433566e90345ca2ec3fc85f9a2e3fa4bac8a0bb5",
+    urls = [
+        "https://storage.googleapis.com/builddeps/433133e05182aaffe8842194433566e90345ca2ec3fc85f9a2e3fa4bac8a0bb5",
+    ],
+)
+
+http_file(
+    name = "go_pusher_linux_aarch64",
+    executable = True,
+    sha256 = "8d0c13034f7473cb778e4b488dc02d9ac781a4548826c9aac56e1b6a6b7ea36f",
+    urls = [
+        "https://storage.googleapis.com/builddeps/8d0c13034f7473cb778e4b488dc02d9ac781a4548826c9aac56e1b6a6b7ea36f",
+    ],
+)
+
+http_file(
     name = "go_puller_linux_ppc64le",
     executable = True,
     sha256 = "540f4d7b2a3d627d7c3190f11c4fab5f8aad48bd42a9dffb037786e26270b6bd",
@@ -339,6 +397,14 @@ container_pull(
     repository = "library/fedora",
 )
 
+container_pull(
+    name = "fedora_aarch64",
+    digest = "sha256:444592d75a07a1c53bdf6c4649430c4bede1df64363adab162e07884d9f7e3cf",
+    puller_linux = "@go_puller_linux_aarch64//file:downloaded",
+    registry = "index.docker.io",
+    repository = "library/fedora",
+)
+
 # Pull base image libvirt
 container_pull(
     name = "libvirt",
@@ -353,6 +419,14 @@ container_pull(
     name = "libvirt_ppc64le",
     digest = "sha256:NOT_AVAILABLE",  # Make sure we don't use outdated image by mistake
     puller_linux = "@go_puller_linux_ppc64le//file:downloaded",
+    registry = "index.docker.io",
+    repository = "kubevirt/libvirt",
+)
+
+container_pull(
+    name = "libvirt_aarch64",
+    digest = "sha256:fa032e142a3a09973352ddc2cd6757bf130b0d96b3d6ca24dd23eb02c5951966",
+    puller_linux = "@go_puller_linux_aarch64//file:downloaded",
     registry = "index.docker.io",
     repository = "kubevirt/libvirt",
 )
@@ -375,6 +449,15 @@ container_pull(
     repository = "kubevirtci/kubevirt-testing",
 )
 
+container_pull(
+    name = "kubevirt-testing_aarch64",
+    digest = "sha256:eb86f7388217bb18611c8c4e6169af3463c2a18f420314eb4d742b3d3669b16f",
+    #tag = "28",
+    puller_linux = "@go_puller_linux_aarch64//file:downloaded",
+    registry = "index.docker.io",
+    repository = "kubevirtci/kubevirt-testing",
+)
+
 # Pull nfs-server image
 container_pull(
     name = "nfs-server",
@@ -389,6 +472,14 @@ container_pull(
     puller_linux = "@go_puller_linux_ppc64le//file:downloaded",
     registry = "index.docker.io",
     repository = "kubevirtci/nfs-ganesha",  # see https://github.com/slintes/docker-nfs-ganesha
+)
+
+container_pull(
+    name = "nfs-server_aarch64",
+    digest = "sha256:2a8c1cad9156165d0be1ee2c78fb2342f8368193acff72eb276ff276512508fa",
+    puller_linux = "@go_puller_linux_aarch64//file:downloaded",
+    registry = "index.docker.io",
+    repository = "slintes/nfs-ganesha",  # see https://github.com/slintes/docker-nfs-ganesha
 )
 
 load(
@@ -428,6 +519,14 @@ http_file(
 )
 
 http_file(
+    name = "qemu-img_aarch64",
+    sha256 = "d0797d9c765eaad04294383ddcfe46360ecbff79afa40fa16b40a44960361d2c",
+    urls = [
+        "https://archives.fedoraproject.org/pub/archive/fedora/linux/updates/28/Everything/aarch64/Packages/q/qemu-img-2.11.2-5.fc28.aarch64.rpm",
+    ],
+)
+
+http_file(
     name = "bzip2",
     sha256 = "5248b7b85e58319c6c16e9b545dc04f1b25ba236e0507a7c923d74b00fe8741c",
     urls = [
@@ -442,6 +541,14 @@ http_file(
     urls = [
         "https://archives.fedoraproject.org/pub/archive/fedora-secondary/releases/28/Everything/ppc64le/os/Packages/b/bzip2-1.0.6-26.fc28.ppc64le.rpm",
         "https://storage.googleapis.com/builddeps/e593e694a232829765969e7270cc355d2353436cd2f950029cfa4c0549125f7f",
+    ],
+)
+
+http_file(
+    name = "bzip2_aarch64",
+    sha256 = "69ac0d44754240e00401cc51d0e5a116f629d41fdca84570763dde3e09117a4f",
+    urls = [
+        "https://archives.fedoraproject.org/pub/archive/fedora/linux/releases/28/Everything/aarch64/os/Packages/b/bzip2-1.0.6-26.fc28.aarch64.rpm",
     ],
 )
 
@@ -464,6 +571,14 @@ http_file(
 )
 
 http_file(
+    name = "capstone_aarch64",
+    sha256 = "9412c524d40e5c87efae912ffe9778e1ca1b0d46a6c564b2ff4a6e0566568a64",
+    urls = [
+        "https://archives.fedoraproject.org/pub/archive/fedora/linux/updates/28/Everything/aarch64/Packages/c/capstone-3.0.5-1.fc28.aarch64.rpm",
+    ],
+)
+
+http_file(
     name = "libaio",
     sha256 = "da731218ec1a8e8f690c880d7a45d09722ea01090caba0ae25d9202e0d521404",
     urls = [
@@ -478,6 +593,14 @@ http_file(
     urls = [
         "https://archives.fedoraproject.org/pub/archive/fedora-secondary/releases/28/Everything/ppc64le/os/Packages/l/libaio-0.3.110-11.fc28.ppc64le.rpm",
         "https://storage.googleapis.com/builddeps/2bad2d833f2a572c41dc5e71f03029f697e42a05bf729d9957479e9bd9ee3342",
+    ],
+)
+
+http_file(
+    name = "libaio_aarch64",
+    sha256 = "3f7c08243c81d6efe22d4a4c2d0628d3b6f5659f67ad0c7070d06dbd9b990e19",
+    urls = [
+        "https://archives.fedoraproject.org/pub/archive/fedora/linux/releases/28/Everything/aarch64/os/Packages/l/libaio-0.3.110-11.fc28.aarch64.rpm",
     ],
 )
 
@@ -500,6 +623,14 @@ http_file(
 )
 
 http_file(
+    name = "libstdc_aarch64",
+    sha256 = "ed4400079398cfff2d5b78bc723593dad77021989e2746fcdf42493d93ab455f",
+    urls = [
+        "https://archives.fedoraproject.org/pub/archive/fedora/linux/updates/28/Everything/aarch64/Packages/l/libstdc++-8.3.1-2.fc28.aarch64.rpm",
+    ],
+)
+
+http_file(
     name = "qemu-guest-agent",
     sha256 = "d9c5072ab2476fbf9e50dd374b2bc680d3accadd2e70d52cae4eb515b6a893f4",
     urls = [
@@ -514,6 +645,14 @@ http_file(
     urls = [
         "https://archives.fedoraproject.org/pub/archive/fedora-secondary/updates/28/Everything/ppc64le/Packages/q/qemu-guest-agent-2.11.2-5.fc28.ppc64le.rpm",
         "https://storage.googleapis.com/builddeps/8bc1ec56aa9d9426b31a5cbf6971a5b01456e3ac717456c5b681b8769a8c12da",
+    ],
+)
+
+http_file(
+    name = "qemu-guest-agent_aarch64",
+    sha256 = "43f42e6e8d213d80664d9ea9de44b8df7ca55b0ca686164f3479b9efd99f6c14",
+    urls = [
+        "https://archives.fedoraproject.org/pub/archive/fedora/linux/updates/28/Everything/aarch64/Packages/q/qemu-guest-agent-2.11.2-5.fc28.aarch64.rpm",
     ],
 )
 
@@ -536,6 +675,14 @@ http_file(
 )
 
 http_file(
+    name = "stress_aarch64",
+    sha256 = "a6e7e8cdbedacaaea6dbe94467ab4e872dece6d5eaaa7fd9ad939cca5839109e",
+    urls = [
+        "https://archives.fedoraproject.org/pub/archive/fedora/linux/releases/28/Everything/aarch64/os/Packages/s/stress-1.0.4-20.fc28.aarch64.rpm",
+    ],
+)
+
+http_file(
     name = "e2fsprogs",
     sha256 = "d6db37d587a2a0f7cd19e42aea8bd3e5e7c3a9c39c324d40be7514624f9f8f5f",
     urls = [
@@ -554,6 +701,14 @@ http_file(
 )
 
 http_file(
+    name = "e2fsprogs_aarch64",
+    sha256 = "3719080f1e9ebe4a826143bfba8c70df1376ce1ab6b5f846bed8caa0101e356a",
+    urls = [
+        "https://archives.fedoraproject.org/pub/archive/fedora/linux/updates/28/Everything/aarch64/Packages/e/e2fsprogs-1.44.2-0.fc28.aarch64.rpm",
+    ],
+)
+
+http_file(
     name = "dmidecode",
     sha256 = "5694c041bcebc273cbf9a67f7210b2dd93c517aba55d93d20980b5bdf4be3751",
     urls = [
@@ -563,11 +718,27 @@ http_file(
 )
 
 http_file(
+    name = "dmidecode_aarch64",
+    sha256 = "ddad1a64eda6dffa6ffeb419e24b612c7fbd99c762844c0b783ddd1cce8bc7f1",
+    urls = [
+        "https://dl.fedoraproject.org/pub/archive/fedora/linux/releases/28/Everything/aarch64/os/Packages/d/dmidecode-3.1-5.fc28.aarch64.rpm",
+    ],
+)
+
+http_file(
     name = "which",
     sha256 = "a7557e0f91d7d710bb7cd939d4263ebbc84aeec9594d7dc4e062ace4b090e3b6",
     urls = [
         "https://dl.fedoraproject.org/pub/archive/fedora/linux/releases/28/Everything/x86_64/os/Packages/w/which-2.21-8.fc28.x86_64.rpm",
         "https://storage.googleapis.com/builddeps/a7557e0f91d7d710bb7cd939d4263ebbc84aeec9594d7dc4e062ace4b090e3b6",
+    ],
+)
+
+http_file(
+    name = "which_aarch64",
+    sha256 = "ed2321b35ebdafec323aa804ac6c2e96d8cc890898c3950f63210443aae362c7",
+    urls = [
+        "https://dl.fedoraproject.org/pub/archive/fedora/linux/releases/28/Everything/aarch64/os/Packages/w/which-2.21-8.fc28.aarch64.rpm",
     ],
 )
 

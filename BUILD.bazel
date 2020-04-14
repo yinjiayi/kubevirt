@@ -99,6 +99,7 @@ genrule(
     name = "libvirt-shared-libs",
     srcs = select({
         "@io_bazel_rules_go//go/platform:linux_ppc64le": ["@libvirt_libs_ppc64le//file"],
+        "@io_bazel_rules_go//go/platform:linux_arm64": ["@libvirt_libs_aarch64//file"],
         "//conditions:default": ["@libvirt_libs//file"],
     }),
     outs = [
@@ -110,6 +111,11 @@ genrule(
         "@io_bazel_rules_go//go/platform:linux_ppc64le": "\n".join([
             "rpm2archive $(location @libvirt_libs_ppc64le//file)",
             "tar -xzf $(location @libvirt_libs_ppc64le//file).tgz",
+            "cp -R usr/lib64/*.so.0.5000.0 $(@D)",
+        ]),
+        "@io_bazel_rules_go//go/platform:linux_arm64": "\n".join([
+            "rpm2archive $(location @libvirt_libs_aarch64//file)",
+            "tar -xzf $(location @libvirt_libs_aarch64//file).tgz",
             "cp -R usr/lib64/*.so.0.5000.0 $(@D)",
         ]),
         "//conditions:default": "\n".join([
@@ -133,6 +139,7 @@ genrule(
     name = "libvirt-devel-headers",
     srcs = select({
         "@io_bazel_rules_go//go/platform:linux_ppc64le": ["@libvirt_devel_ppc64le//file"],
+        "@io_bazel_rules_go//go/platform:linux_arm64": ["@libvirt_devel_aarch64//file"],
         "//conditions:default": ["@libvirt_devel//file"],
     }),
     outs = [
@@ -158,6 +165,11 @@ genrule(
         "@io_bazel_rules_go//go/platform:linux_ppc64le": "\n".join([
             "rpm2archive $(location @libvirt_devel_ppc64le//file)",
             "tar -xzf $(location @libvirt_devel_ppc64le//file).tgz",
+            "cp -R usr/include/libvirt $(@D)",
+        ]),
+        "@io_bazel_rules_go//go/platform:linux_arm64": "\n".join([
+            "rpm2archive $(location @libvirt_devel_aarch64//file)",
+            "tar -xzf $(location @libvirt_devel_aarch64//file).tgz",
             "cp -R usr/include/libvirt $(@D)",
         ]),
         "//conditions:default": "\n".join([
@@ -214,6 +226,7 @@ container_image(
     name = "passwd-image",
     base = select({
         "@io_bazel_rules_go//go/platform:linux_ppc64le": "@fedora_ppc64le//image",
+        "@io_bazel_rules_go//go/platform:linux_arm64": "@fedora_aarch64//image",
         "//conditions:default": "@fedora//image",
     }),
     tars = [":passwd-tar"],
