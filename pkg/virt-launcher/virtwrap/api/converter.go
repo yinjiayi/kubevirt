@@ -48,12 +48,15 @@ import (
 	"kubevirt.io/kubevirt/pkg/util/net/dns"
 )
 
+// The location of uefi boot loader on ARM64 is different from that on x86
 const (
 	CPUModeHostPassthrough = "host-passthrough"
 	CPUModeHostModel       = "host-model"
 	defaultIOThread        = uint(1)
 	EFICode                = "OVMF_CODE.fd"
 	EFIVars                = "OVMF_VARS.fd"
+	EFICodeAARCH64         = "AAVMF_CODE.fd"
+	EFIVarsAARCH64         = "AAVMF_VARS.fd"
 	EFICodeSecureBoot      = "OVMF_CODE.secboot.fd"
 	EFIVarsSecureBoot      = "OVMF_VARS.secboot.fd"
 )
@@ -705,7 +708,18 @@ func Convert_v1_VirtualMachine_To_api_Domain(vmi *v1.VirtualMachineInstance, dom
 		}
 
 		if vmi.Spec.Domain.Firmware.Bootloader != nil && vmi.Spec.Domain.Firmware.Bootloader.EFI != nil {
-			if vmi.Spec.Domain.Firmware.Bootloader.EFI.SecureBoot == nil || *vmi.Spec.Domain.Firmware.Bootloader.EFI.SecureBoot {
+			// The location of uefi boot loader on ARM64 is different is different from that on x86 and ppc64le
+			efiCode := ""
+			efiVars := ""
+			if c.Architecture == "arm64" {
+				efiCode = EFICodeAARCH64
+				efiVars = EFIVarsAARCH64
+			} else {
+				efiCode = EFICode
+				efiVars = EFIVars
+			}
+			// UEFI secure boot is currently not supported on aarch64 Arch
+			if (vmi.Spec.Domain.Firmware.Bootloader.EFI.SecureBoot == nil || *vmi.Spec.Domain.Firmware.Bootloader.EFI.SecureBoot) && *vmi.Spec.Domain.Firmware.Bootloader.EFI.SecureBoot && c.Architecture != "arm64" {
 				domain.Spec.OS.BootLoader = &Loader{
 					Path:     filepath.Join(c.OVMFPath, EFICodeSecureBoot),
 					ReadOnly: "yes",
@@ -719,7 +733,7 @@ func Convert_v1_VirtualMachine_To_api_Domain(vmi *v1.VirtualMachineInstance, dom
 				}
 			} else {
 				domain.Spec.OS.BootLoader = &Loader{
-					Path:     filepath.Join(c.OVMFPath, EFICode),
+					Path:     filepath.Join(c.OVMFPath, efiCode),
 					ReadOnly: "yes",
 					Secure:   "no",
 					Type:     "pflash",
@@ -727,7 +741,7 @@ func Convert_v1_VirtualMachine_To_api_Domain(vmi *v1.VirtualMachineInstance, dom
 
 				domain.Spec.OS.NVRam = &NVRam{
 					NVRam:    filepath.Join("/tmp", domain.Spec.Name),
-					Template: filepath.Join(c.OVMFPath, EFIVars),
+					Template: filepath.Join(c.OVMFPath, efiVars),
 				}
 			}
 		}
@@ -761,10 +775,26 @@ func Convert_v1_VirtualMachine_To_api_Domain(vmi *v1.VirtualMachineInstance, dom
 		)
 	}
 
+	// arm64 arch not support BIOS boot, change the default boot method to UEFI boot on arm64
+	if c.Architecture == "arm64" {
+		domain.Spec.OS.BootLoader = &Loader{
+			Path:     filepath.Join(c.OVMFPath, EFICodeAARCH64),
+			ReadOnly: "yes",
+			Secure:   "no",
+			Type:     "pflash",
+		}
+
+		domain.Spec.OS.NVRam = &NVRam{
+			NVRam:    filepath.Join("/tmp", domain.Spec.Name),
+			Template: filepath.Join(c.OVMFPath, EFIVarsAARCH64),
+		}
+	}
+
 	// Take SMBios values from the VirtualMachineOptions
 	// SMBios option does not work in Power, attempting to set it will result in the following error message:
 	// "Option not supported for this target" issued by qemu-system-ppc64, so don't set it in case GOARCH is ppc64le
-	if c.Architecture != "ppc64le" {
+	// ARM64 use UEFI boot by default, set SMBios is unnecessory.
+	if c.Architecture != "ppc64le" && c.Architecture != "arm64" {
 		domain.Spec.OS.SMBios = &SMBios{
 			Mode: "sysinfo",
 		}
@@ -1067,7 +1097,12 @@ func Convert_v1_VirtualMachine_To_api_Domain(vmi *v1.VirtualMachineInstance, dom
 	}
 
 	if vmi.Spec.Domain.CPU == nil || vmi.Spec.Domain.CPU.Model == "" {
-		domain.Spec.CPU.Mode = v1.CPUModeHostModel
+		// aarch64 not support host model well, set default CPU.Mode to host passthrough
+		if c.Architecture == "arm64" {
+			domain.Spec.CPU.Mode = v1.CPUModeHostPassthrough
+		} else {
+			domain.Spec.CPU.Mode = v1.CPUModeHostModel
+		}
 	}
 
 	if vmi.Spec.Domain.Devices.AutoattachSerialConsole == nil || *vmi.Spec.Domain.Devices.AutoattachSerialConsole == true {
@@ -1102,8 +1137,9 @@ func Convert_v1_VirtualMachine_To_api_Domain(vmi *v1.VirtualMachineInstance, dom
 			},
 		}
 	}
-
-	if vmi.Spec.Domain.Devices.AutoattachGraphicsDevice == nil || *vmi.Spec.Domain.Devices.AutoattachGraphicsDevice == true {
+	// VGA device is not support by buildin qemu-kvm in virt-launcher image for aarch64
+	// so disable autoattachgraphicsdevice on aarch64
+	if c.Architecture != "arm64" && (vmi.Spec.Domain.Devices.AutoattachGraphicsDevice == nil || *vmi.Spec.Domain.Devices.AutoattachGraphicsDevice == true) {
 		var heads uint = 1
 		var vram uint = 16384
 		domain.Spec.Devices.Video = []Video{

@@ -1225,8 +1225,9 @@ func getMemoryOverhead(vmi *v1.VirtualMachineInstance) *resource.Quantity {
 	// static overhead for IOThread
 	overhead.Add(resource.MustParse("8Mi"))
 
-	// Add video RAM overhead
-	if domain.Devices.AutoattachGraphicsDevice == nil || *domain.Devices.AutoattachGraphicsDevice == true {
+	// VGA device is not support by buildin qemu-kvm in virt-launcher image for aarch64
+	// Add video RAM overhead when GOARCH is not aarch64
+	if runtime.GOARCH != "arm64" && (domain.Devices.AutoattachGraphicsDevice == nil || *domain.Devices.AutoattachGraphicsDevice == true) {
 		overhead.Add(resource.MustParse("16Mi"))
 	}
 
