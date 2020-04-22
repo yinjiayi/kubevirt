@@ -162,6 +162,8 @@ var _ = Describe("VirtualMachineInstance Mutator", func() {
 		vmiSpec, _ := getVMISpecMetaFromResponse()
 		if rt.GOARCH == "ppc64le" {
 			Expect(vmiSpec.Domain.Machine.Type).To(Equal("pseries"))
+		} else if rt.GOARCH == "arm64" {
+			Expect(vmiSpec.Domain.Machine.Type).To(Equal("virt"))
 		} else {
 			Expect(vmiSpec.Domain.Machine.Type).To(Equal("q35"))
 		}

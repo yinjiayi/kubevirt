@@ -193,6 +193,12 @@ var _ = Describe("Template", func() {
 
 			It("should work", func() {
 				trueVar := true
+				ovmfPath := ""
+				if runtime.GOARCH == "arm64" {
+					ovmfPath = "/usr/share/AAVMF"
+				} else {
+					ovmfPath = "/usr/share/OVMF"
+				}
 				annotations := map[string]string{
 					hooks.HookSidecarListAnnotationName: `[{"image": "some-image:v1", "imagePullPolicy": "IfNotPresent"}]`,
 					"test":                              "shouldBeInPod",
@@ -246,7 +252,7 @@ var _ = Describe("Template", func() {
 					"--grace-period-seconds", "45",
 					"--hook-sidecars", "1",
 					"--less-pvc-space-toleration", "10",
-					"--ovmf-path", "/usr/share/OVMF"}))
+					"--ovmf-path", ovmfPath}))
 				Expect(pod.Spec.Containers[1].Name).To(Equal("hook-sidecar-0"))
 				Expect(pod.Spec.Containers[1].Image).To(Equal("some-image:v1"))
 				Expect(pod.Spec.Containers[1].ImagePullPolicy).To(Equal(kubev1.PullPolicy("IfNotPresent")))
@@ -628,6 +634,12 @@ var _ = Describe("Template", func() {
 		})
 		Context("with node selectors", func() {
 			It("should add node selectors to template", func() {
+				ovmfPath := ""
+				if runtime.GOARCH == "arm64" {
+					ovmfPath = "/usr/share/AAVMF"
+				} else {
+					ovmfPath = "/usr/share/OVMF"
+				}
 
 				nodeSelector := map[string]string{
 					"kubernetes.io/hostname": "master",
@@ -664,7 +676,7 @@ var _ = Describe("Template", func() {
 					"--grace-period-seconds", "45",
 					"--hook-sidecars", "1",
 					"--less-pvc-space-toleration", "10",
-					"--ovmf-path", "/usr/share/OVMF"}))
+					"--ovmf-path", ovmfPath}))
 				Expect(pod.Spec.Containers[1].Name).To(Equal("hook-sidecar-0"))
 				Expect(pod.Spec.Containers[1].Image).To(Equal("some-image:v1"))
 				Expect(pod.Spec.Containers[1].ImagePullPolicy).To(Equal(kubev1.PullPolicy("IfNotPresent")))

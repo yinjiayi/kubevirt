@@ -432,6 +432,8 @@ var _ = Describe("Validating VMICreate Admitter", func() {
 			vmi := v1.NewMinimalVMI("testvmi")
 			if rt.GOARCH == "ppc64le" {
 				vmi.Spec.Domain.Machine.Type = "pseries"
+			} else if rt.GOARCH == "arm64" {
+				vmi.Spec.Domain.Machine.Type = "virt"
 			} else {
 				vmi.Spec.Domain.Machine.Type = "q35"
 			}

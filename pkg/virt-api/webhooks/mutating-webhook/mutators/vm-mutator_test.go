@@ -88,6 +88,8 @@ var _ = Describe("VirtualMachine Mutator", func() {
 		vmSpec, _ := getVMSpecMetaFromResponse()
 		if rt.GOARCH == "ppc64le" {
 			Expect(vmSpec.Template.Spec.Domain.Machine.Type).To(Equal("pseries"))
+		} else if rt.GOARCH == "arm64" {
+			Expect(vmSpec.Template.Spec.Domain.Machine.Type).To(Equal("virt"))
 		} else {
 			Expect(vmSpec.Template.Spec.Domain.Machine.Type).To(Equal("q35"))
 		}
