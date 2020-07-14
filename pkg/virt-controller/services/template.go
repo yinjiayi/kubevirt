@@ -1231,6 +1231,12 @@ func getMemoryOverhead(vmi *v1.VirtualMachineInstance) *resource.Quantity {
 		overhead.Add(resource.MustParse("16Mi"))
 	}
 
+        // When use uefi boot on aarch64 with edk2 package, qemu will create 2 pflash(64Mi each, 128Mi in total)
+        // it should be considered for memory overhead
+        if runtime.GOARCH == "arm64" {
+                overhead.Add(resource.MustParse("128Mi"))
+        }
+
 	// Additional overhead of 1G for VFIO devices. VFIO requires all guest RAM to be locked
 	// in addition to MMIO memory space to allow DMA. 1G is often the size of reserved MMIO space on x86 systems.
 	// Additial information can be found here: https://www.redhat.com/archives/libvir-list/2015-November/msg00329.html
