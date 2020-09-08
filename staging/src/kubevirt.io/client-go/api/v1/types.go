@@ -467,15 +467,35 @@ const (
 	// if a particular node is alive and hence should be available for new
 	// virtual machine instance scheduling. Used on Node.
 	VirtHandlerHeartbeat string = "kubevirt.io/heartbeat"
+	// Namespace recommended by Kubernetes for commonly recognized labels
+	AppLabelPrefix = "app.kubernetes.io"
+	// This label is commonly used by 3rd party management tools to identify
+	// an application's name.
+	AppNameLabel = AppLabelPrefix + "/name"
+	// This label is commonly used by 3rd party management tools to identify
+	// an application's version.
+	AppVersionLabel = AppLabelPrefix + "/version"
+	// This label is commonly used by 3rd party management tools to identify
+	// a higher level application.
+	AppPartOfLabel = AppLabelPrefix + "/part-of"
+	// This label is commonly used by 3rd party management tools to identify
+	// the component this application is a part of.
+	AppComponentLabel = AppLabelPrefix + "/component"
+	// This label identifies each resource as part of KubeVirt
+	AppComponent = "kubevirt"
 	// This label will be set on all resources created by the operator
-	ManagedByLabel              = "app.kubernetes.io/managed-by"
-	ManagedByLabelOperatorValue = "kubevirt-operator"
+	ManagedByLabel              = AppLabelPrefix + "/managed-by"
+	ManagedByLabelOperatorValue = "virt-operator"
 	// This annotation represents the kubevirt version for an install strategy configmap.
 	InstallStrategyVersionAnnotation = "kubevirt.io/install-strategy-version"
 	// This annotation represents the kubevirt registry used for an install strategy configmap.
 	InstallStrategyRegistryAnnotation = "kubevirt.io/install-strategy-registry"
 	// This annotation represents the kubevirt deployment identifier used for an install strategy configmap.
 	InstallStrategyIdentifierAnnotation = "kubevirt.io/install-strategy-identifier"
+	// This annotation is a hash of all customizations that live under spec.CustomizeComponents
+	KubeVirtCustomizeComponentAnnotationHash = "kubevirt.io/customizer-identifier"
+	// This annotation represents the kubevirt generation that was used to create a resource
+	KubeVirtGenerationAnnotation = "kubevirt.io/generation"
 	// This annotation represents that this object is for temporary use during updates
 	EphemeralBackupObject = "kubevirt.io/ephemeral-backup-object"
 
@@ -1006,11 +1026,25 @@ const (
 // +k8s:openapi-gen=true
 type DriverCache string
 
+//
+// +k8s:openapi-gen=true
+type DriverIO string
+
 const (
 	// CacheNone - I/O from the guest is not cached on the host, but may be kept in a writeback disk cache.
 	CacheNone DriverCache = "none"
 	// CacheWriteThrough - I/O from the guest is cached on the host but written through to the physical medium.
 	CacheWriteThrough DriverCache = "writethrough"
+
+	// IOThreads - User mode based threads with a shared lock that perform I/O tasks. Can impact performance but offers
+	// more predictable behaviour. This method is also takes fewer CPU cycles to submit I/O requests.
+	IOThreads DriverIO = "threads"
+	// IONative - Kernel native I/O tasks (AIO) offer a better performance but can block the VM if the file is not fully
+	// allocated so this method recommended only when the backing file/disk/etc is fully preallocated.
+	IONative DriverIO = "native"
+	// IODefault - Fallback to the default value from the kernel. With recent Kernel versions (for example RHEL-7) the
+	// default is AIO.
+	IODefault DriverIO = "default"
 )
 
 // Handler defines a specific action that should be taken
@@ -1117,10 +1151,44 @@ type KubeVirtSpec struct {
 
 	CertificateRotationStrategy KubeVirtCertificateRotateStrategy `json:"certificateRotateStrategy,omitempty"`
 
+	// Designate the apps.kubevirt.io/version label for KubeVirt components.
+	// Useful if KubeVirt is included as part of a product.
+	// If ProductVersion is not specified, KubeVirt's version will be used.
+	ProductVersion string `json:"productVersion,omitempty"`
+
+	// Designate the apps.kubevirt.io/part-of label for KubeVirt components.
+	// Useful if KubeVirt is included as part of a product.
+	// If ProductName is not specified, the part-of label will be omitted.
+	ProductName string `json:"productName,omitempty"`
+
 	// holds kubevirt configurations.
 	// same as the virt-configMap
 	Configuration KubeVirtConfiguration `json:"configuration,omitempty"`
+
+	CustomizeComponents CustomizeComponents `json:"customizeComponents,omitempty"`
 }
+
+// +k8s:openapi-gen=true
+type CustomizeComponents struct {
+	// +listType=atomic
+	Patches []Patch `json:"patches,omitempty"`
+}
+
+// +k8s:openapi-gen=true
+type Patch struct {
+	ResourceName string    `json:"resourceName,omitempty"`
+	ResourceType string    `json:"resourceType,omitempty"`
+	Patch        string    `json:"patch,omitempty"`
+	Type         PatchType `json:"type,omitempty"`
+}
+
+type PatchType string
+
+const (
+	JSONPatchType           PatchType = "json"
+	MergePatchType          PatchType = "merge"
+	StrategicMergePatchType PatchType = "strategic"
+)
 
 type KubeVirtUninstallStrategy string
 
@@ -1304,6 +1372,7 @@ type KubeVirtConfiguration struct {
 	SELinuxLauncherType         string                  `json:"selinuxLauncherType,omitempty"`
 	SMBIOSConfig                *SMBiosConfiguration    `json:"smbios,omitempty"`
 	SupportedGuestAgentVersions []string                `json:"supportedGuestAgentVersions,omitempty"`
+	MemBalloonStatsPeriod       int                     `json:"memBalloonStatsPeriod,omitempty"`
 }
 
 // ---

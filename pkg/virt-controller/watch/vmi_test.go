@@ -550,6 +550,8 @@ var _ = Describe("VirtualMachineInstance watcher", func() {
 						),
 					),
 				)
+
+				testutils.ExpectEvent(recorder, FailedPvcNotFoundReason)
 			}
 
 			vmi := NewPendingVirtualMachine("testvmi")
@@ -709,14 +711,15 @@ var _ = Describe("VirtualMachineInstance watcher", func() {
 
 			controller.Execute()
 		},
-			table.Entry("with ready infra container and not ready compute container",
-				[]k8sv1.ContainerStatus{{Name: "compute", Ready: false}, {Name: "kubevirt-infra", Ready: true}},
+			table.Entry("with running compute container and no infra container",
+				[]k8sv1.ContainerStatus{{
+					Name: "compute", State: k8sv1.ContainerState{Running: &k8sv1.ContainerStateRunning{}},
+				}},
 			),
-			table.Entry("with ready compute container and no infra container",
-				[]k8sv1.ContainerStatus{{Name: "compute", Ready: true}},
-			),
-			table.Entry("with ready compute container and no ready istio-proxy container",
-				[]k8sv1.ContainerStatus{{Name: "compute", Ready: true}, {Name: "istio-proxy", Ready: false}},
+			table.Entry("with running compute container and no ready istio-proxy container",
+				[]k8sv1.ContainerStatus{{
+					Name: "compute", State: k8sv1.ContainerState{Running: &k8sv1.ContainerStateRunning{}},
+				}, {Name: "istio-proxy", Ready: false}},
 			),
 		)
 		table.DescribeTable("should not hand over pod to virt-handler if pod is ready and running", func(containerStatus []k8sv1.ContainerStatus) {
@@ -1055,71 +1058,6 @@ var _ = Describe("VirtualMachineInstance watcher", func() {
 			table.Entry("and in failed state", k8sv1.PodFailed),
 		)
 	})
-
-	Context("When VirtualMachineInstance is connected to a network", func() {
-		It("should report the status of this network", func() {
-			vmi := NewPendingVirtualMachine("testvmi")
-			vmi.Status.Phase = v1.Scheduling
-			pod := NewPodForVirtualMachine(vmi, k8sv1.PodRunning)
-
-			addVirtualMachine(vmi)
-			podFeeder.Add(pod)
-
-			networkName := "test net"
-			podIp := "1.1.1.1"
-			pod.Status.PodIP = podIp
-			vmi.Spec.Networks = []v1.Network{
-				v1.Network{
-					Name: networkName,
-					NetworkSource: v1.NetworkSource{
-						Pod: &v1.PodNetwork{
-							VMNetworkCIDR: "1.1.1.1",
-						},
-					},
-				},
-			}
-			vmiInterface.EXPECT().Update(gomock.Any()).Do(func(arg interface{}) {
-				Expect(len(arg.(*v1.VirtualMachineInstance).Status.Interfaces)).To(Equal(1))
-				Expect(arg.(*v1.VirtualMachineInstance).Status.Interfaces[0].Name).To(Equal(networkName))
-				Expect(arg.(*v1.VirtualMachineInstance).Status.Interfaces[0].IP).To(Equal(podIp))
-				Expect(arg.(*v1.VirtualMachineInstance).Status.Interfaces[0].IPs[0]).To(Equal(podIp))
-			}).Return(vmi, nil)
-			controller.Execute()
-		})
-
-		It("should only report the pod network in status", func() {
-			vmi := NewPendingVirtualMachine("testvmi")
-			vmi.Status.Phase = v1.Scheduling
-			pod := NewPodForVirtualMachine(vmi, k8sv1.PodRunning)
-
-			addVirtualMachine(vmi)
-			podFeeder.Add(pod)
-
-			networkName := "test net"
-			vmi.Spec.Networks = []v1.Network{
-				v1.Network{
-					Name: networkName,
-					NetworkSource: v1.NetworkSource{
-						Pod: &v1.PodNetwork{
-							VMNetworkCIDR: "1.1.1.1",
-						},
-					},
-				},
-				v1.Network{
-					Name: networkName,
-					NetworkSource: v1.NetworkSource{
-						Multus: &v1.MultusNetwork{
-							NetworkName: "multus",
-						},
-					},
-				},
-			}
-			vmiInterface.EXPECT().Update(gomock.Any()).Do(func(arg interface{}) {
-				Expect(len(arg.(*v1.VirtualMachineInstance).Status.Interfaces)).To(Equal(1))
-			}).Return(vmi, nil)
-			controller.Execute()
-		})
-	})
 })
 
 func NewPendingVirtualMachine(name string) *v1.VirtualMachineInstance {
@@ -1147,8 +1085,7 @@ func NewPodForVirtualMachine(vmi *v1.VirtualMachineInstance, phase k8sv1.PodPhas
 		Status: k8sv1.PodStatus{
 			Phase: phase,
 			ContainerStatuses: []k8sv1.ContainerStatus{
-				{Ready: true, Name: "kubevirt-infra"},
-				{Ready: false, Name: "compute"},
+				{Ready: false, Name: "compute", State: k8sv1.ContainerState{Running: &k8sv1.ContainerStateRunning{}}},
 			},
 		},
 	}

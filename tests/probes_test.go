@@ -11,6 +11,8 @@ import (
 	v12 "kubevirt.io/client-go/api/v1"
 	"kubevirt.io/client-go/kubecli"
 	"kubevirt.io/kubevirt/tests"
+	cd "kubevirt.io/kubevirt/tests/containerdisk"
+	"kubevirt.io/kubevirt/tests/libvmi"
 )
 
 var _ = Describe("[ref_id:1182]Probes", func() {
@@ -56,9 +58,9 @@ var _ = Describe("[ref_id:1182]Probes", func() {
 			By("Specifying a VMI with a readiness probe")
 			var vmi *v12.VirtualMachineInstance
 			if useFedoraVM {
-				vmi = tests.NewRandomFedora32VMIWithFedoraUser()
+				vmi = libvmi.NewFedora()
 			} else {
-				vmi = tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
+				vmi = tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
 			}
 
 			vmi.Spec.ReadinessProbe = readinessProbe
@@ -89,7 +91,7 @@ var _ = Describe("[ref_id:1182]Probes", func() {
 
 		table.DescribeTable("should fail", func(readinessProbe *v12.Probe) {
 			By("Specifying a VMI with a readiness probe")
-			vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
+			vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
 			vmi.Spec.ReadinessProbe = readinessProbe
 			vmi, err = virtClient.VirtualMachineInstance(tests.NamespaceTestDefault).Create(vmi)
 			Expect(err).ToNot(HaveOccurred())
@@ -139,7 +141,7 @@ var _ = Describe("[ref_id:1182]Probes", func() {
 		}
 		table.DescribeTable("should not fail the VMI", func(livenessProbe *v12.Probe, serverStarter func(vmi *v12.VirtualMachineInstance, port int, isFedoraVM bool)) {
 			By("Specifying a VMI with a readiness probe")
-			vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
+			vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
 			vmi.Spec.LivenessProbe = livenessProbe
 			vmi, err = virtClient.VirtualMachineInstance(tests.NamespaceTestDefault).Create(vmi)
 			Expect(err).ToNot(HaveOccurred())
@@ -162,7 +164,7 @@ var _ = Describe("[ref_id:1182]Probes", func() {
 
 		table.DescribeTable("should fail the VMI", func(livenessProbe *v12.Probe) {
 			By("Specifying a VMI with a readiness probe")
-			vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
+			vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
 			vmi.Spec.LivenessProbe = livenessProbe
 			vmi, err = virtClient.VirtualMachineInstance(tests.NamespaceTestDefault).Create(vmi)
 			Expect(err).ToNot(HaveOccurred())

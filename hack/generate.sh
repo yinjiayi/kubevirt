@@ -19,7 +19,15 @@ deepcopy-gen --input-dirs kubevirt.io/client-go/apis/snapshot/v1alpha1 \
 openapi-gen --input-dirs kubevirt.io/client-go/apis/snapshot/v1alpha1,k8s.io/api/core/v1,k8s.io/apimachinery/pkg/apis/meta/v1,kubevirt.io/client-go/api/v1 \
     --output-base ${KUBEVIRT_DIR}/staging/src \
     --output-package kubevirt.io/client-go/apis/snapshot/v1alpha1 \
-    --go-header-file ${KUBEVIRT_DIR}/hack/boilerplate/boilerplate.go.txt
+    --go-header-file ${KUBEVIRT_DIR}/hack/boilerplate/boilerplate.go.txt >${KUBEVIRT_DIR}/api/api-rule-violations.list
+
+if cmp ${KUBEVIRT_DIR}/api/api-rule-violations.list ${KUBEVIRT_DIR}/api/api-rule-violations-known.list; then
+    echo "openapi generated"
+else
+    diff ${KUBEVIRT_DIR}/api/api-rule-violations.list ${KUBEVIRT_DIR}/api/api-rule-violations-known.list
+    echo "You introduced new API rule violation"
+    exit 2
+fi
 
 client-gen --clientset-name versioned \
     --input-base kubevirt.io/client-go/apis \
@@ -129,5 +137,3 @@ protoc --go_out=plugins=grpc:. pkg/handler-launcher-com/cmd/info/info.proto
 
 mockgen -source pkg/handler-launcher-com/notify/info/info.pb.go -package=info -destination=pkg/handler-launcher-com/notify/info/generated_mock_info.go
 mockgen -source pkg/handler-launcher-com/cmd/info/info.pb.go -package=info -destination=pkg/handler-launcher-com/cmd/info/generated_mock_info.go
-
-hack/sync-kubevirtci.sh

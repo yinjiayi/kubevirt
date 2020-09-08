@@ -103,6 +103,27 @@ func (admitter *VMsAdmitter) Admit(ar *v1beta1.AdmissionReview) *v1beta1.Admissi
 	return &reviewResponse
 }
 
+func (admitter *VMsAdmitter) AdmitStatus(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+	vm, _, err := webhookutils.GetVMFromAdmissionReview(ar)
+	if err != nil {
+		return webhookutils.ToAdmissionResponseError(err)
+	}
+
+	causes := validateStateChangeRequests(ar.Request, vm)
+	if len(causes) > 0 {
+		return webhookutils.ToAdmissionResponse(causes)
+	}
+
+	causes = validateSnapshotStatus(ar.Request, vm)
+	if len(causes) > 0 {
+		return webhookutils.ToAdmissionResponse(causes)
+	}
+
+	reviewResponse := v1beta1.AdmissionResponse{}
+	reviewResponse.Allowed = true
+	return &reviewResponse
+}
+
 func (admitter *VMsAdmitter) authorizeVirtualMachineSpec(ar *v1beta1.AdmissionRequest, vm *v1.VirtualMachine) ([]metav1.StatusCause, error) {
 	var causes []metav1.StatusCause
 
@@ -263,10 +284,22 @@ func validateStateChangeRequests(ar *v1beta1.AdmissionRequest, vm *v1.VirtualMac
 		}
 
 		if getRenameRequest(existingVM) != nil {
-			return []metav1.StatusCause{{
-				Type:    metav1.CauseTypeFieldValueInvalid,
-				Message: "Modifying a VM during a rename process is not allowed",
-			}}
+			allowed := webhooks.GetAllowedServiceAccounts()
+			if _, ok := allowed[ar.UserInfo.Username]; ok {
+				if !reflect.DeepEqual(existingVM.Spec, vm.Spec) {
+					return []metav1.StatusCause{{
+						Type:    metav1.CauseTypeFieldValueNotSupported,
+						Message: fmt.Sprint("Cannot update VM spec until rename process completes"),
+						Field:   k8sfield.NewPath("spec").String(),
+					}}
+
+				}
+			} else {
+				return []metav1.StatusCause{{
+					Type:    metav1.CauseTypeFieldValueNotSupported,
+					Message: fmt.Sprint("Modifying a VM during a rename process is restricted to Kubevirt core components"),
+				}}
+			}
 		}
 	}
 

@@ -6,6 +6,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	batchv1 "k8s.io/api/batch/v1"
 	k8sv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,6 +15,7 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	"kubevirt.io/kubevirt/pkg/virtctl/expose"
 	"kubevirt.io/kubevirt/tests"
+	cd "kubevirt.io/kubevirt/tests/containerdisk"
 )
 
 func newLabeledVMI(label string, virtClient kubecli.KubevirtClient, createVMI bool) (vmi *v1.VirtualMachineInstance) {
@@ -21,7 +23,7 @@ func newLabeledVMI(label string, virtClient kubecli.KubevirtClient, createVMI bo
 		{Name: "test-port-tcp", Port: 1500, Protocol: "TCP"},
 		{Name: "udp", Port: 82, Protocol: "UDP"},
 		{Name: "test-port-udp", Port: 1500, Protocol: "UDP"}}
-	vmi = tests.NewRandomVMIWithMasqueradeInterfaceEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n", ports)
+	vmi = tests.NewRandomVMIWithMasqueradeInterfaceEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n", ports)
 	vmi.Labels = map[string]string{"expose": label}
 
 	var err error
@@ -36,14 +38,6 @@ func newLabeledVMI(label string, virtClient kubecli.KubevirtClient, createVMI bo
 	return
 }
 
-func waitForJobToCompleteWithStatus(virtClient *kubecli.KubevirtClient, jobPod *k8sv1.Pod, expectedResult k8sv1.PodPhase, timeoutSec time.Duration) {
-	EventuallyWithOffset(1, func() k8sv1.PodPhase {
-		pod, err := (*virtClient).CoreV1().Pods(jobPod.Namespace).Get(jobPod.Name, k8smetav1.GetOptions{})
-		ExpectWithOffset(1, err).ToNot(HaveOccurred())
-		return pod.Status.Phase
-	}, timeoutSec*time.Second, 1*time.Second).Should(Equal(expectedResult))
-}
-
 var _ = Describe("[rfe_id:253][crit:medium][vendor:cnv-qe@redhat.com][level:component]Expose", func() {
 
 	var virtClient kubecli.KubevirtClient
@@ -55,6 +49,26 @@ var _ = Describe("[rfe_id:253][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 		virtClient, err = kubecli.GetKubevirtClient()
 		tests.PanicOnError(err)
 	})
+	runHelloWorldJob := func(host, port, namespace string) *batchv1.Job {
+		job := tests.NewHelloWorldJob(host, port)
+		job, err := virtClient.BatchV1().Jobs(namespace).Create(job)
+		ExpectWithOffset(1, err).ToNot(HaveOccurred())
+		return job
+	}
+
+	runHelloWorldJobUDP := func(host, port, namespace string) *batchv1.Job {
+		job := tests.NewHelloWorldJobUDP(host, port)
+		job, err := virtClient.BatchV1().Jobs(namespace).Create(job)
+		ExpectWithOffset(1, err).ToNot(HaveOccurred())
+		return job
+	}
+
+	runHelloWorldJobHttp := func(host, port, namespace string) *batchv1.Job {
+		job := tests.NewHelloWorldJobHTTP(host, port)
+		job, err := virtClient.BatchV1().Jobs(namespace).Create(job)
+		ExpectWithOffset(1, err).ToNot(HaveOccurred())
+		return job
+	}
 
 	Context("Expose service on a VM", func() {
 		var tcpVM *v1.VirtualMachineInstance
@@ -79,13 +93,11 @@ var _ = Describe("[rfe_id:253][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 				Expect(err).ToNot(HaveOccurred())
 				serviceIP := svc.Spec.ClusterIP
 
-				By("Starting a pod which tries to reach the VMI via ClusterIP")
-				job := tests.NewHelloWorldJob(serviceIP, servicePort)
-				job, err = virtClient.CoreV1().Pods(tcpVM.Namespace).Create(job)
-				Expect(err).ToNot(HaveOccurred())
+				By("Starting a job which tries to reach the VMI via ClusterIP")
+				job := runHelloWorldJob(serviceIP, servicePort, tcpVM.Namespace)
 
-				By("Waiting for the pod to report a successful connection attempt")
-				waitForJobToCompleteWithStatus(&virtClient, job, k8sv1.PodSucceeded, 420)
+				By("Waiting for the job to report a successful connection attempt")
+				Expect(tests.WaitForJobToSucceed(job, 420*time.Second)).To(Succeed())
 			})
 		})
 
@@ -169,13 +181,11 @@ var _ = Describe("[rfe_id:253][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 					Expect(node.Status.Addresses).ToNot(BeEmpty())
 					nodeIP := node.Status.Addresses[0].Address
 
-					By("Starting a pod which tries to reach the VMI via NodePort")
-					job := tests.NewHelloWorldJob(nodeIP, strconv.Itoa(int(nodePort)))
-					job, err = virtClient.CoreV1().Pods(tcpVM.Namespace).Create(job)
-					Expect(err).ToNot(HaveOccurred())
+					By("Starting a job which tries to reach the VMI via NodePort")
+					job := runHelloWorldJob(nodeIP, strconv.Itoa(int(nodePort)), tcpVM.Namespace)
 
-					By("Waiting for the pod to report a successful connection attempt")
-					waitForJobToCompleteWithStatus(&virtClient, job, k8sv1.PodSucceeded, 420)
+					By("Waiting for the job to report a successful connection attempt")
+					Expect(tests.WaitForJobToSucceed(job, 420*time.Second)).To(Succeed())
 				}
 			})
 		})
@@ -206,13 +216,11 @@ var _ = Describe("[rfe_id:253][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 				Expect(err).ToNot(HaveOccurred())
 				serviceIP := svc.Spec.ClusterIP
 
-				By("Starting a pod which tries to reach the VMI via ClusterIP")
-				job := tests.NewHelloWorldJobUDP(serviceIP, servicePort)
-				job, err = virtClient.CoreV1().Pods(udpVM.Namespace).Create(job)
-				Expect(err).ToNot(HaveOccurred())
+				By("Starting a job which tries to reach the VMI via ClusterIP")
+				job := runHelloWorldJobUDP(serviceIP, servicePort, udpVM.Namespace)
 
-				By("Waiting for the pod to report a successful connection attempt")
-				waitForJobToCompleteWithStatus(&virtClient, job, k8sv1.PodSucceeded, 420)
+				By("Waiting for the job to report a successful connection attempt")
+				Expect(tests.WaitForJobToSucceed(job, 420*time.Second)).To(Succeed())
 			})
 		})
 
@@ -235,11 +243,11 @@ var _ = Describe("[rfe_id:253][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 				nodePort := svc.Spec.Ports[0].NodePort
 				Expect(nodePort).To(BeNumerically(">", 0))
 
-				By("Starting a pod which tries to reach the VMI via ClusterIP")
-				job := tests.NewHelloWorldJobUDP(serviceIP, servicePort)
-				job, err = virtClient.CoreV1().Pods(udpVM.Namespace).Create(job)
-				Expect(err).ToNot(HaveOccurred())
-				waitForJobToCompleteWithStatus(&virtClient, job, k8sv1.PodSucceeded, 120)
+				By("Starting a job which tries to reach the VMI via ClusterIP")
+				job := runHelloWorldJobUDP(serviceIP, servicePort, udpVM.Namespace)
+
+				By("Waiting for the job to report a successful connection attempt")
+				Expect(tests.WaitForJobToSucceed(job, 120*time.Second)).To(Succeed())
 
 				By("Getting the node IP from all nodes")
 				nodes, err := virtClient.CoreV1().Nodes().List(k8smetav1.ListOptions{})
@@ -249,13 +257,11 @@ var _ = Describe("[rfe_id:253][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 					Expect(node.Status.Addresses).ToNot(BeEmpty())
 					nodeIP := node.Status.Addresses[0].Address
 
-					By("Starting a pod which tries to reach the VMI via NodePort")
-					job := tests.NewHelloWorldJobUDP(nodeIP, strconv.Itoa(int(nodePort)))
-					job, err = virtClient.CoreV1().Pods(udpVM.Namespace).Create(job)
-					Expect(err).ToNot(HaveOccurred())
+					By("Starting a job which tries to reach the VMI via NodePort")
+					job := runHelloWorldJobUDP(nodeIP, strconv.Itoa(int(nodePort)), udpVM.Namespace)
 
-					By("Waiting for the pod to report a successful connection attempt")
-					waitForJobToCompleteWithStatus(&virtClient, job, k8sv1.PodSucceeded, 420)
+					By("Waiting for the job to report a successful connection attempt")
+					Expect(tests.WaitForJobToSucceed(job, 420*time.Second)).To(Succeed())
 				}
 			})
 		})
@@ -311,13 +317,11 @@ var _ = Describe("[rfe_id:253][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 				Expect(err).ToNot(HaveOccurred())
 				serviceIP := svc.Spec.ClusterIP
 
-				By("Starting a pod which tries to reach the VMI via ClusterIP")
-				job := tests.NewHelloWorldJob(serviceIP, servicePort)
-				job, err = virtClient.CoreV1().Pods(vmrs.Namespace).Create(job)
-				Expect(err).ToNot(HaveOccurred())
+				By("Starting a job which tries to reach the VMI via ClusterIP")
+				job := runHelloWorldJob(serviceIP, servicePort, vmrs.Namespace)
 
-				By("Waiting for the pod to report a successful connection attempt")
-				waitForJobToCompleteWithStatus(&virtClient, job, k8sv1.PodSucceeded, 420)
+				By("Waiting for the job to report a successful connection attempt")
+				Expect(tests.WaitForJobToSucceed(job, 420*time.Second)).To(Succeed())
 			})
 		})
 	})
@@ -375,21 +379,17 @@ var _ = Describe("[rfe_id:253][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 				Expect(err).ToNot(HaveOccurred())
 				serviceIP := svc.Spec.ClusterIP
 
-				By("Starting a pod which tries to reach the VMI via ClusterIP")
-				job := tests.NewHelloWorldJob(serviceIP, servicePort)
-				job, err = virtClient.CoreV1().Pods(vm.Namespace).Create(job)
-				Expect(err).ToNot(HaveOccurred())
+				By("Starting a job which tries to reach the VMI via ClusterIP")
+				job := runHelloWorldJob(serviceIP, servicePort, vm.Namespace)
 
-				By("Waiting for the pod to report a successful connection attempt")
-				waitForJobToCompleteWithStatus(&virtClient, job, k8sv1.PodSucceeded, 120)
+				By("Waiting for the job to report a successful connection attempt")
+				Expect(tests.WaitForJobToSucceed(job, 420*time.Second)).To(Succeed())
 
-				By("Starting a pod which tries to reach the VMI again via the same ClusterIP, this time over HTTP.")
-				job = tests.NewHelloWorldJobHttp(serviceIP, servicePort)
-				job, err = virtClient.CoreV1().Pods(vm.Namespace).Create(job)
-				Expect(err).ToNot(HaveOccurred())
+				By("Starting a job which tries to reach the VMI again via the same ClusterIP, this time over HTTP.")
+				job = runHelloWorldJobHttp(serviceIP, servicePort, vm.Namespace)
 
-				By("Waiting for the HTTP job pod to report a successful connection attempt.")
-				waitForJobToCompleteWithStatus(&virtClient, job, k8sv1.PodSucceeded, 120)
+				By("Waiting for the HTTP job to report a successful connection attempt.")
+				Expect(tests.WaitForJobToSucceed(job, 120*time.Second)).To(Succeed())
 			})
 
 			It("[test_id:345][label:masquerade_binding_connectivity]Should verify the exposed service is functional before and after VM restart.", func() {
@@ -400,13 +400,11 @@ var _ = Describe("[rfe_id:253][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 				Expect(err).ToNot(HaveOccurred())
 				serviceIP := svc.Spec.ClusterIP
 
-				By("Starting a pod which tries to reach the VMI via ClusterIP.")
-				job := tests.NewHelloWorldJob(serviceIP, servicePort)
-				job, err = virtClient.CoreV1().Pods(vmObj.Namespace).Create(job)
-				Expect(err).ToNot(HaveOccurred())
+				By("Starting a job which tries to reach the VMI via ClusterIP.")
+				job := runHelloWorldJob(serviceIP, servicePort, vmObj.Namespace)
 
-				By("Waiting for the pod to report a successful connection attempt.")
-				waitForJobToCompleteWithStatus(&virtClient, job, k8sv1.PodSucceeded, 120)
+				By("Waiting for the job to report a successful connection attempt.")
+				Expect(tests.WaitForJobToSucceed(job, 120*time.Second)).To(Succeed())
 
 				// Retrieve the current VMI UID, to be compared with the new UID after restart.
 				var vmi *v1.VirtualMachineInstance
@@ -435,13 +433,11 @@ var _ = Describe("[rfe_id:253][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 				tests.GenerateHelloWorldServer(vmi, testPort, "tcp")
 
 				By("Repeating the sequence as prior to restarting the VM: Connect to exposed ClusterIP service.")
-				By("Starting a pod which tries to reach the VMI via ClusterIP.")
-				job = tests.NewHelloWorldJob(serviceIP, servicePort)
-				job, err = virtClient.CoreV1().Pods(vmObj.Namespace).Create(job)
-				Expect(err).ToNot(HaveOccurred())
+				By("Starting a job which tries to reach the VMI via ClusterIP.")
+				job = runHelloWorldJob(serviceIP, servicePort, vmObj.Namespace)
 
-				By("Waiting for the pod to report a successful connection attempt.")
-				waitForJobToCompleteWithStatus(&virtClient, job, k8sv1.PodSucceeded, 120)
+				By("Waiting for the job to report a successful connection attempt.")
+				Expect(tests.WaitForJobToSucceed(job, 120*time.Second)).To(Succeed())
 			})
 
 			It("[test_id:343][label:masquerade_binding_connectivity]Should Verify an exposed service of a VM is not functional after VM deletion.", func() {
@@ -450,13 +446,11 @@ var _ = Describe("[rfe_id:253][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 				Expect(err).ToNot(HaveOccurred())
 				serviceIP := svc.Spec.ClusterIP
 
-				By("Starting a pod which tries to reach the VMI via ClusterIP")
-				job := tests.NewHelloWorldJob(serviceIP, servicePort)
-				job, err = virtClient.CoreV1().Pods(vm.Namespace).Create(job)
-				Expect(err).ToNot(HaveOccurred())
+				By("Starting a job which tries to reach the VMI via ClusterIP")
+				job := runHelloWorldJob(serviceIP, servicePort, vm.Namespace)
 
-				By("Waiting for the pod to report a successful connection attempt")
-				waitForJobToCompleteWithStatus(&virtClient, job, k8sv1.PodSucceeded, 120)
+				By("Waiting for the job to report a successful connection attempt")
+				Expect(tests.WaitForJobToSucceed(job, 120*time.Second)).To(Succeed())
 
 				By("Comparing the service's endpoints IP address to the VM pod IP address.")
 				// Get the IP address of the VM pod.
@@ -488,13 +482,11 @@ var _ = Describe("[rfe_id:253][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 				Expect(err).ToNot(HaveOccurred())
 				Expect(svcEndpoints.Subsets).To(BeNil())
 
-				By("Starting a pod which tries to reach the VMI via the ClusterIP service.")
-				job = tests.NewHelloWorldJob(serviceIP, servicePort)
-				job, err = virtClient.CoreV1().Pods(vm.Namespace).Create(job)
-				Expect(err).ToNot(HaveOccurred())
+				By("Starting a job which tries to reach the VMI via the ClusterIP service.")
+				job = runHelloWorldJob(serviceIP, servicePort, vm.Namespace)
 
-				By("Waiting for the pod to report a failed connection attempt.")
-				waitForJobToCompleteWithStatus(&virtClient, job, k8sv1.PodFailed, 120)
+				By("Waiting for the job to report a failed connection attempt.")
+				Expect(tests.WaitForJobToFail(job, 120*time.Second)).To(Succeed())
 			})
 		})
 	})

@@ -33,6 +33,7 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	cdiv1 "kubevirt.io/containerized-data-importer/pkg/apis/core/v1alpha1"
 	"kubevirt.io/kubevirt/tests"
+	cd "kubevirt.io/kubevirt/tests/containerdisk"
 )
 
 var _ = Describe("[rfe_id:127][posneg:negative][crit:medium][vendor:cnv-qe@redhat.com][level:component]Console", func() {
@@ -66,7 +67,7 @@ var _ = Describe("[rfe_id:127][posneg:negative][crit:medium][vendor:cnv-qe@redha
 		}()
 
 		By("Checking that the console output equals to expected one")
-		_, err = expecter.ExpectBatch([]expect.Batcher{
+		_, err = tests.ExpectBatchWithValidatedSend(expecter, []expect.Batcher{
 			&expect.BSnd{S: "\n"},
 			&expect.BExp{R: expected},
 		}, 120*time.Second)
@@ -92,7 +93,7 @@ var _ = Describe("[rfe_id:127][posneg:negative][crit:medium][vendor:cnv-qe@redha
 			Context("with a cirros image", func() {
 
 				It("[test_id:1588]should return that we are running cirros", func() {
-					vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
+					vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
 					RunVMIAndWaitForStart(vmi)
 					ExpectConsoleOutput(
 						vmi,
@@ -103,7 +104,7 @@ var _ = Describe("[rfe_id:127][posneg:negative][crit:medium][vendor:cnv-qe@redha
 
 			Context("with a fedora image", func() {
 				It("[test_id:1589]should return that we are running fedora", func() {
-					vmi := tests.NewRandomVMIWithEphemeralDiskHighMemory(tests.ContainerDiskFor(tests.ContainerDiskFedora))
+					vmi := tests.NewRandomVMIWithEphemeralDiskHighMemory(cd.ContainerDiskFor(cd.ContainerDiskFedora))
 					RunVMIAndWaitForStart(vmi)
 					ExpectConsoleOutput(
 						vmi,
@@ -116,7 +117,7 @@ var _ = Describe("[rfe_id:127][posneg:negative][crit:medium][vendor:cnv-qe@redha
 				type vmiBuilder func() (*v1.VirtualMachineInstance, *cdiv1.DataVolume)
 
 				newVirtualMachineInstanceWithAlpineContainerDisk := func() (*v1.VirtualMachineInstance, *cdiv1.DataVolume) {
-					return tests.NewRandomVMIWithEphemeralDisk(tests.ContainerDiskFor(tests.ContainerDiskAlpine)), nil
+					return tests.NewRandomVMIWithEphemeralDisk(cd.ContainerDiskFor(cd.ContainerDiskAlpine)), nil
 				}
 
 				newVirtualMachineInstanceWithAlpineOCSFileDisk := func() (*v1.VirtualMachineInstance, *cdiv1.DataVolume) {
@@ -127,20 +128,20 @@ var _ = Describe("[rfe_id:127][posneg:negative][crit:medium][vendor:cnv-qe@redha
 					return tests.NewRandomVirtualMachineInstanceWithOCSDisk(tests.GetUrl(tests.AlpineHttpUrl), tests.NamespaceTestDefault, k8sv1.ReadWriteOnce, k8sv1.PersistentVolumeBlock)
 				}
 
-				table.DescribeTable("[test_id:2706] should return that we are running alpine", func(createVMI vmiBuilder) {
+				table.DescribeTable("should return that we are running alpine", func(createVMI vmiBuilder) {
 					vmi, dv := createVMI()
 					defer deleteDataVolume(dv)
 					RunVMIAndWaitForStart(vmi)
 					ExpectConsoleOutput(vmi, "login")
 				},
-					table.Entry("with ContainerDisk", newVirtualMachineInstanceWithAlpineContainerDisk),
-					table.Entry("with OCS Filesystem Disk", newVirtualMachineInstanceWithAlpineOCSFileDisk),
-					table.Entry("with OCS Block Disk", newVirtualMachineInstanceWithAlpineOCSBlockDisk),
+					table.Entry("[test_id:4636]with ContainerDisk", newVirtualMachineInstanceWithAlpineContainerDisk),
+					table.Entry("[test_id:4637]with OCS Filesystem Disk", newVirtualMachineInstanceWithAlpineOCSFileDisk),
+					table.Entry("[test_id:4638]with OCS Block Disk", newVirtualMachineInstanceWithAlpineOCSBlockDisk),
 				)
 			})
 
 			It("[test_id:1590]should be able to reconnect to console multiple times", func() {
-				vmi := tests.NewRandomVMIWithEphemeralDisk(tests.ContainerDiskFor(tests.ContainerDiskAlpine))
+				vmi := tests.NewRandomVMIWithEphemeralDisk(cd.ContainerDiskFor(cd.ContainerDiskAlpine))
 
 				RunVMIAndWaitForStart(vmi)
 
@@ -150,7 +151,7 @@ var _ = Describe("[rfe_id:127][posneg:negative][crit:medium][vendor:cnv-qe@redha
 			})
 
 			It("[test_id:1591]should close console connection when new console connection is opened", func(done Done) {
-				vmi := tests.NewRandomVMIWithEphemeralDisk(tests.ContainerDiskFor(tests.ContainerDiskAlpine))
+				vmi := tests.NewRandomVMIWithEphemeralDisk(cd.ContainerDiskFor(cd.ContainerDiskAlpine))
 
 				RunVMIAndWaitForStart(vmi)
 
@@ -175,7 +176,7 @@ var _ = Describe("[rfe_id:127][posneg:negative][crit:medium][vendor:cnv-qe@redha
 			}, 220)
 
 			It("[test_id:1592]should wait until the virtual machine is in running state and return a stream interface", func() {
-				vmi := tests.NewRandomVMIWithEphemeralDisk(tests.ContainerDiskFor(tests.ContainerDiskAlpine))
+				vmi := tests.NewRandomVMIWithEphemeralDisk(cd.ContainerDiskFor(cd.ContainerDiskAlpine))
 				By("Creating a new VirtualMachineInstance")
 				_, err := virtClient.VirtualMachineInstance(tests.NamespaceTestDefault).Create(vmi)
 				Expect(err).ToNot(HaveOccurred())
@@ -185,7 +186,7 @@ var _ = Describe("[rfe_id:127][posneg:negative][crit:medium][vendor:cnv-qe@redha
 			})
 
 			It("[test_id:1593]should fail waiting for the virtual machine instance to be running", func() {
-				vmi := tests.NewRandomVMIWithEphemeralDisk(tests.ContainerDiskFor(tests.ContainerDiskAlpine))
+				vmi := tests.NewRandomVMIWithEphemeralDisk(cd.ContainerDiskFor(cd.ContainerDiskAlpine))
 				vmi.Spec.Affinity = &k8sv1.Affinity{
 					NodeAffinity: &k8sv1.NodeAffinity{
 						RequiredDuringSchedulingIgnoredDuringExecution: &k8sv1.NodeSelector{
@@ -209,7 +210,7 @@ var _ = Describe("[rfe_id:127][posneg:negative][crit:medium][vendor:cnv-qe@redha
 			})
 
 			It("[test_id:1594]should fail waiting for the expecter", func() {
-				vmi := tests.NewRandomVMIWithEphemeralDisk(tests.ContainerDiskFor(tests.ContainerDiskAlpine))
+				vmi := tests.NewRandomVMIWithEphemeralDisk(cd.ContainerDiskFor(cd.ContainerDiskAlpine))
 				vmi.Spec.Affinity = &k8sv1.Affinity{
 					NodeAffinity: &k8sv1.NodeAffinity{
 						RequiredDuringSchedulingIgnoredDuringExecution: &k8sv1.NodeSelector{
@@ -238,7 +239,7 @@ var _ = Describe("[rfe_id:127][posneg:negative][crit:medium][vendor:cnv-qe@redha
 			var vmi *v1.VirtualMachineInstance
 
 			BeforeEach(func() {
-				vmi = tests.NewRandomVMIWithEphemeralDisk(tests.ContainerDiskFor(tests.ContainerDiskAlpine))
+				vmi = tests.NewRandomVMIWithEphemeralDisk(cd.ContainerDiskFor(cd.ContainerDiskAlpine))
 				f := false
 				vmi.Spec.Domain.Devices.AutoattachSerialConsole = &f
 			})

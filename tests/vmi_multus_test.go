@@ -26,8 +26,6 @@ import (
 	"strings"
 	"time"
 
-	netutils "k8s.io/utils/net"
-
 	expect "github.com/google/goexpect"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -44,14 +42,16 @@ import (
 	v1 "kubevirt.io/client-go/api/v1"
 	"kubevirt.io/client-go/kubecli"
 	"kubevirt.io/kubevirt/tests"
+	cd "kubevirt.io/kubevirt/tests/containerdisk"
+	"kubevirt.io/kubevirt/tests/flags"
 )
 
 const (
 	postUrl                = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
 	linuxBridgeConfCRD     = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"name\": \"mynet\", \"plugins\": [{\"type\": \"bridge\", \"bridge\": \"br10\", \"vlan\": 100, \"ipam\": {}},{\"type\": \"tuning\"}]}"}}`
 	ptpConfCRD             = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"name\": \"mynet\", \"plugins\": [{\"type\": \"ptp\", \"ipam\": { \"type\": \"host-local\", \"subnet\": \"10.1.1.0/24\" }},{\"type\": \"tuning\"}]}"}}`
-	sriovConfCRD           = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s","annotations":{"k8s.v1.cni.cncf.io/resourceName":"%s"}},"spec":{"config":"{ \"name\": \"sriov\", \"type\": \"sriov\", \"ipam\": { \"type\": \"host-local\", \"subnet\": \"10.1.1.0/24\" } }"}}`
-	sriovLinkEnableConfCRD = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s","annotations":{"k8s.v1.cni.cncf.io/resourceName":"%s"}},"spec":{"config":"{ \"name\": \"sriov\", \"type\": \"sriov\", \"link_state\": \"enable\", \"ipam\": { \"type\": \"host-local\", \"subnet\": \"10.1.1.0/24\" } }"}}`
+	sriovConfCRD           = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s","annotations":{"k8s.v1.cni.cncf.io/resourceName":"%s"}},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"name\": \"sriov\", \"type\": \"sriov\", \"ipam\": { \"type\": \"host-local\", \"subnet\": \"10.1.1.0/24\" } }"}}`
+	sriovLinkEnableConfCRD = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s","annotations":{"k8s.v1.cni.cncf.io/resourceName":"%s"}},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"name\": \"sriov\", \"type\": \"sriov\", \"link_state\": \"enable\", \"ipam\": { \"type\": \"host-local\", \"subnet\": \"10.1.1.0/24\" } }"}}`
 )
 
 var _ = Describe("Multus", func() {
@@ -108,7 +108,7 @@ var _ = Describe("Multus", func() {
 	})
 
 	createVMIOnNode := func(interfaces []v1.Interface, networks []v1.Network) *v1.VirtualMachineInstance {
-		vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskAlpine), "#!/bin/bash\n")
+		vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskAlpine), "#!/bin/bash\n")
 		vmi.Spec.Domain.Devices.Interfaces = interfaces
 		vmi.Spec.Networks = networks
 
@@ -156,7 +156,7 @@ var _ = Describe("Multus", func() {
 
 			It("[test_id:1751]should create a virtual machine with one interface", func() {
 				By("checking virtual machine instance can ping 10.1.1.1 using ptp cni plugin")
-				detachedVMI := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
+				detachedVMI := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
 				detachedVMI.Spec.Domain.Devices.Interfaces = []v1.Interface{{Name: "ptp", InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}}}}
 				detachedVMI.Spec.Networks = []v1.Network{
 					{Name: "ptp", NetworkSource: v1.NetworkSource{
@@ -168,13 +168,13 @@ var _ = Describe("Multus", func() {
 				Expect(err).ToNot(HaveOccurred())
 				tests.WaitUntilVMIReady(detachedVMI, tests.LoggedInCirrosExpecter)
 
-				pingVirtualMachine(detachedVMI, "10.1.1.1", "\\$ ")
+				Expect(tests.PingFromVMConsole(detachedVMI, "10.1.1.1")).To(Succeed())
 			})
 
 			It("[test_id:1752]should create a virtual machine with one interface with network definition from different namespace", func() {
 				tests.SkipIfOpenShift4("OpenShift 4 does not support usage of the network definition from the different namespace")
 				By("checking virtual machine instance can ping 10.1.1.1 using ptp cni plugin")
-				detachedVMI := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
+				detachedVMI := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
 				detachedVMI.Spec.Domain.Devices.Interfaces = []v1.Interface{{Name: "ptp", InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}}}}
 				detachedVMI.Spec.Networks = []v1.Network{
 					{Name: "ptp", NetworkSource: v1.NetworkSource{
@@ -186,12 +186,12 @@ var _ = Describe("Multus", func() {
 				Expect(err).ToNot(HaveOccurred())
 				tests.WaitUntilVMIReady(detachedVMI, tests.LoggedInCirrosExpecter)
 
-				pingVirtualMachine(detachedVMI, "10.1.1.1", "\\$ ")
+				Expect(tests.PingFromVMConsole(detachedVMI, "10.1.1.1")).To(Succeed())
 			})
 
 			It("[test_id:1753]should create a virtual machine with two interfaces", func() {
 				By("checking virtual machine instance can ping 10.1.1.1 using ptp cni plugin")
-				detachedVMI := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
+				detachedVMI := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
 
 				detachedVMI.Spec.Domain.Devices.Interfaces = []v1.Interface{
 					defaultInterface,
@@ -213,8 +213,8 @@ var _ = Describe("Multus", func() {
 					&expect.BExp{R: "\\$ "},
 					&expect.BSnd{S: cmdCheck},
 					&expect.BExp{R: "\\$ "},
-					&expect.BSnd{S: "ip addr show eth1 | grep 10.1.1 | wc -l"},
-					&expect.BExp{R: "1"},
+					&expect.BSnd{S: "ip addr show eth1 | grep 10.1.1 | wc -l\n"},
+					&expect.BExp{R: tests.RetValue("1")},
 				}, 15)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -222,14 +222,14 @@ var _ = Describe("Multus", func() {
 				checkInterface(detachedVMI, "eth0", "\\$ ")
 				checkInterface(detachedVMI, "eth1", "\\$ ")
 
-				pingVirtualMachine(detachedVMI, "10.1.1.1", "\\$ ")
+				Expect(tests.PingFromVMConsole(detachedVMI, "10.1.1.1")).To(Succeed())
 			})
 		})
 
 		Context("VirtualMachineInstance with multus network as default network", func() {
 
 			It("[test_id:1751]should create a virtual machine with one interface with multus default network definition", func() {
-				detachedVMI := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
+				detachedVMI := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
 				detachedVMI.Spec.Domain.Devices.Interfaces = []v1.Interface{{Name: "ptp", InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}}}}
 				detachedVMI.Spec.Networks = []v1.Network{
 					{Name: "ptp", NetworkSource: v1.NetworkSource{
@@ -244,7 +244,7 @@ var _ = Describe("Multus", func() {
 				tests.WaitUntilVMIReady(detachedVMI, tests.LoggedInCirrosExpecter)
 
 				By("checking virtual machine instance can ping 10.1.1.1 using ptp cni plugin")
-				pingVirtualMachine(detachedVMI, "10.1.1.1", "\\$ ")
+				Expect(tests.PingFromVMConsole(detachedVMI, "10.1.1.1")).To(Succeed())
 
 				By("checking virtual machine instance only has one interface")
 				// lo0, eth0
@@ -336,7 +336,7 @@ var _ = Describe("Multus", func() {
 				checkInterface(vmiTwo, "eth0", "localhost:~#")
 
 				By("ping between virtual machines")
-				pingVirtualMachine(vmiOne, "10.1.1.2", "localhost:~#")
+				Expect(tests.PingFromVMConsole(vmiOne, "10.1.1.2")).To(Succeed())
 			})
 
 			It("[test_id:1578]should create two virtual machines with two interfaces", func() {
@@ -365,7 +365,7 @@ var _ = Describe("Multus", func() {
 				checkInterface(vmiTwo, "eth1", "localhost:~#")
 
 				By("ping between virtual machines")
-				pingVirtualMachine(vmiOne, "10.1.1.2", "localhost:~#")
+				Expect(tests.PingFromVMConsole(vmiOne, "10.1.1.2")).To(Succeed())
 			})
 		})
 
@@ -409,7 +409,7 @@ var _ = Describe("Multus", func() {
 				Expect(strings.Contains(out, customMacAddress)).To(BeFalse())
 
 				By("Ping from the VM with the custom MAC to the other VM.")
-				pingVirtualMachine(vmiOne, "10.1.1.2", "localhost:~#")
+				Expect(tests.PingFromVMConsole(vmiOne, "10.1.1.2")).To(Succeed())
 			})
 		})
 		Context("Single VirtualMachineInstance with Linux bridge CNI plugin interface", func() {
@@ -464,7 +464,7 @@ var _ = Describe("Multus", func() {
 				By("Start VMI")
 				linuxBridgeIfIdx := 1
 
-				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskAlpine), "#!/bin/bash\n")
+				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskAlpine), "#!/bin/bash\n")
 				vmi.Spec.Domain.Devices.Interfaces = []v1.Interface{
 					defaultInterface,
 					linuxBridgeInterface,
@@ -514,7 +514,7 @@ var _ = Describe("Multus", func() {
                     chmod +x /usr/local/bin/qemu-ga
                     systemd-run --unit=guestagent /usr/local/bin/qemu-ga
                 `, ep1Ip, ep2Ip, ep1IpV6, ep2IpV6, tests.GetUrl(tests.GuestAgentHttpUrl))
-				agentVMI := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskFedora), userdata)
+				agentVMI := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskFedora), userdata)
 
 				agentVMI.Spec.Domain.Devices.Interfaces = interfaces
 				agentVMI.Spec.Networks = networks
@@ -622,23 +622,21 @@ var _ = Describe("SRIOV", func() {
 	})
 
 	Context("VirtualMachineInstance with sriov plugin interface", func() {
-		getSriovVmi := func(networks []string) (vmi *v1.VirtualMachineInstance) {
-			// If we run on a host with Mellanox SR-IOV cards then we'll need to load in corresponding kernel modules.
-			// Stop NetworkManager to not interfere with manual IP configuration for SR-IOV interfaces.
-			// Use agent to signal about cloud-init phase completion.
-			userData := fmt.Sprintf(`#!/bin/sh
-			    echo "fedora" |passwd fedora --stdin
-			    dnf install -y kernel-modules-$(uname -r)
-			    modprobe mlx5_ib
-			    systemctl stop NetworkManager
-			    mkdir -p /usr/local/bin
-			    curl %s > /usr/local/bin/qemu-ga
-			    chmod +x /usr/local/bin/qemu-ga
-			    systemd-run --unit=guestagent /usr/local/bin/qemu-ga`, tests.GetUrl(tests.GuestAgentHttpUrl))
+		getSriovVmi := func(networks []string) *v1.VirtualMachineInstance {
+			// Pre-configured container-disk image for sriov-lane
+			vmi := tests.NewRandomVMIWithEphemeralDisk(cd.ContainerDiskFor(cd.ContainerDiskFedoraSRIOVLane))
 
-			ports := []v1.Port{}
-			vmi = tests.NewRandomVMIWithMasqueradeInterfaceEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskFedora), userData, ports)
+			// fedora requires some more memory to boot without kernel panics
+			vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceName("memory")] = resource.MustParse("1024M")
 
+			// newer fedora kernels may require hardware RNG to boot
+			vmi.Spec.Domain.Devices.Rng = &v1.Rng{}
+
+			// pod network interface
+			vmi.Spec.Domain.Devices.Interfaces = []v1.Interface{{Name: "default", Ports: []v1.Port{}, InterfaceBindingMethod: v1.InterfaceBindingMethod{Masquerade: &v1.InterfaceMasquerade{}}}}
+			vmi.Spec.Networks = []v1.Network{*v1.DefaultPodNetwork()}
+
+			// sriov network interfaces
 			for _, name := range networks {
 				iface := v1.Interface{Name: name, InterfaceBindingMethod: v1.InterfaceBindingMethod{SRIOV: &v1.InterfaceSRIOV{}}}
 				network := v1.Network{Name: name, NetworkSource: v1.NetworkSource{Multus: &v1.MultusNetwork{NetworkName: name}}}
@@ -646,10 +644,7 @@ var _ = Describe("SRIOV", func() {
 				vmi.Spec.Networks = append(vmi.Spec.Networks, network)
 			}
 
-			// fedora requires some more memory to boot without kernel panics
-			vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceName("memory")] = resource.MustParse("1024M")
-
-			return
+			return vmi
 		}
 
 		startVmi := func(vmi *v1.VirtualMachineInstance) {
@@ -864,8 +859,8 @@ var _ = Describe("SRIOV", func() {
 			configInterface(vmi2, "eth1", cidrB, "#")
 
 			// now check ICMP goes both ways
-			pingVirtualMachine(vmi1, cidrToIP(cidrB), "#")
-			pingVirtualMachine(vmi2, cidrToIP(cidrA), "#")
+			Expect(tests.PingFromVMConsole(vmi1, cidrToIP(cidrB))).To(Succeed())
+			Expect(tests.PingFromVMConsole(vmi2, cidrToIP(cidrA))).To(Succeed())
 		}
 
 		It("[test_id:3956]should connect to another machine with sriov interface over IPv4", func() {
@@ -892,7 +887,7 @@ func configInterface(vmi *v1.VirtualMachineInstance, interfaceName, interfaceAdd
 		&expect.BSnd{S: cmdCheck},
 		&expect.BExp{R: prompt},
 		&expect.BSnd{S: "echo $?\n"},
-		&expect.BExp{R: "0"},
+		&expect.BExp{R: tests.RetValue("0")},
 	}, 15)
 	Expect(err).ToNot(HaveOccurred(), "Failed to configure address %s for interface %s on VMI %s", interfaceAddress, interfaceName, vmi.Name)
 
@@ -903,7 +898,7 @@ func configInterface(vmi *v1.VirtualMachineInstance, interfaceName, interfaceAdd
 		&expect.BSnd{S: cmdCheck},
 		&expect.BExp{R: prompt},
 		&expect.BSnd{S: "echo $?\n"},
-		&expect.BExp{R: "0"},
+		&expect.BExp{R: tests.RetValue("0")},
 	}, 15)
 	Expect(err).ToNot(HaveOccurred(), "Failed to set interface %s up on VMI %s", interfaceName, vmi.Name)
 }
@@ -916,7 +911,7 @@ func checkInterface(vmi *v1.VirtualMachineInstance, interfaceName, prompt string
 		&expect.BSnd{S: cmdCheck},
 		&expect.BExp{R: prompt},
 		&expect.BSnd{S: "echo $?\n"},
-		&expect.BExp{R: "0"},
+		&expect.BExp{R: tests.RetValue("0")},
 	}, 15)
 	Expect(err).ToNot(HaveOccurred(), "Interface %q was not found in the VMI %s within the given timeout", interfaceName, vmi.Name)
 }
@@ -925,31 +920,13 @@ func checkMacAddress(vmi *v1.VirtualMachineInstance, interfaceName, macAddress s
 	cmdCheck := fmt.Sprintf("ip link show %s\n", interfaceName)
 	err := tests.CheckForTextExpecter(vmi, []expect.Batcher{
 		&expect.BSnd{S: "\n"},
-		&expect.BExp{R: "#"},
+		&expect.BExp{R: tests.PromptExpression},
 		&expect.BSnd{S: cmdCheck},
 		&expect.BExp{R: macAddress},
-		&expect.BExp{R: "#"},
 		&expect.BSnd{S: "echo $?\n"},
-		&expect.BExp{R: "0"},
+		&expect.BExp{R: tests.RetValue("0")},
 	}, 15)
 	Expect(err).ToNot(HaveOccurred(), "MAC %q was not found in the VMI %s within the given timeout", macAddress, vmi.Name)
-}
-
-func pingVirtualMachine(vmi *v1.VirtualMachineInstance, ipAddr, prompt string) {
-	pingString := "ping"
-	if netutils.IsIPv6String(ipAddr) {
-		pingString = "ping -6"
-	}
-	cmdCheck := fmt.Sprintf("%s %s -c 1 -w 5\n", pingString, ipAddr)
-	err := tests.CheckForTextExpecter(vmi, []expect.Batcher{
-		&expect.BSnd{S: "\n"},
-		&expect.BExp{R: prompt},
-		&expect.BSnd{S: cmdCheck},
-		&expect.BExp{R: prompt},
-		&expect.BSnd{S: "echo $?\n"},
-		&expect.BExp{R: "0"},
-	}, 30)
-	Expect(err).ToNot(HaveOccurred(), "Failed to ping VMI %s within the given timeout", vmi.Name)
 }
 
 // Tests in Multus suite are expecting a Linux bridge to be available on each node, with iptables allowing
@@ -960,7 +937,7 @@ func pingVirtualMachine(vmi *v1.VirtualMachineInstance, ipAddr, prompt string) {
 func configureNodeNetwork(virtClient kubecli.KubevirtClient) {
 
 	// Fetching the kubevirt-operator image from the pod makes this independent from the installation method / image used
-	pods, err := virtClient.CoreV1().Pods(tests.KubeVirtInstallNamespace).List(metav1.ListOptions{LabelSelector: "kubevirt.io=virt-operator"})
+	pods, err := virtClient.CoreV1().Pods(flags.KubeVirtInstallNamespace).List(metav1.ListOptions{LabelSelector: "kubevirt.io=virt-operator"})
 	Expect(err).ToNot(HaveOccurred())
 	Expect(pods.Items).ToNot(BeEmpty())
 

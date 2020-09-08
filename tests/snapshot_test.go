@@ -17,6 +17,7 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	cdiv1 "kubevirt.io/containerized-data-importer/pkg/apis/core/v1alpha1"
 	"kubevirt.io/kubevirt/tests"
+	cd "kubevirt.io/kubevirt/tests/containerdisk"
 )
 
 var _ = Describe("VirtualMachineSnapshot Tests", func() {
@@ -36,14 +37,14 @@ var _ = Describe("VirtualMachineSnapshot Tests", func() {
 
 		BeforeEach(func() {
 			var err error
-			vmiImage := tests.ContainerDiskFor(tests.ContainerDiskCirros)
+			vmiImage := cd.ContainerDiskFor(cd.ContainerDiskCirros)
 			vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(vmiImage, "echo Hi\n")
 			vm = tests.NewRandomVirtualMachine(vmi, false)
 			vm, err = virtClient.VirtualMachine(tests.NamespaceTestDefault).Create(vm)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("should successfully create a snapshot", func() {
+		It("[test_id:4609]should successfully create a snapshot", func() {
 			snapshotName := "snapshot-" + vm.Name
 			snapshot := &snapshotv1.VirtualMachineSnapshot{
 				ObjectMeta: metav1.ObjectMeta{
@@ -77,7 +78,7 @@ var _ = Describe("VirtualMachineSnapshot Tests", func() {
 			Expect(content.Spec.VolumeBackups).To(BeEmpty())
 		})
 
-		It("should not create a snapshot when VM is running", func() {
+		It("[test_id:4610]should not create a snapshot when VM is running", func() {
 			patch := []byte("[{ \"op\": \"replace\", \"path\": \"/spec/running\", \"value\": true }]")
 			vm, err := virtClient.VirtualMachine(vm.Namespace).Patch(vm.Name, types.JSONPatchType, patch)
 			Expect(err).ToNot(HaveOccurred())
@@ -123,7 +124,7 @@ var _ = Describe("VirtualMachineSnapshot Tests", func() {
 			vm.Spec.Running = &running
 		})
 
-		It("should successfully create a snapshot", func() {
+		It("[test_id:4611]should successfully create a snapshot", func() {
 			vm, err := virtClient.VirtualMachine(vm.Namespace).Create(vm)
 			Expect(err).ToNot(HaveOccurred())
 

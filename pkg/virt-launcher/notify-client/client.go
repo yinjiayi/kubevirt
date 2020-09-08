@@ -162,12 +162,14 @@ func (n *Notifier) SendDomainEvent(event watch.Event) error {
 		status := event.Object.(*metav1.Status)
 		statusJSON, err = json.Marshal(status)
 		if err != nil {
+			log.Log.Reason(err).Infof("JSON marshal of notify ERROR event failed")
 			return err
 		}
 	} else {
 		domain := event.Object.(*api.Domain)
 		domainJSON, err = json.Marshal(domain)
 		if err != nil {
+			log.Log.Reason(err).Infof("JSON marshal of notify event failed")
 			return err
 		}
 	}
@@ -182,6 +184,7 @@ func (n *Notifier) SendDomainEvent(event watch.Event) error {
 	response, err := n.v1client.HandleDomainEvent(ctx, &request)
 
 	if err != nil {
+		log.Log.Reason(err).Infof("Failed to send domain notify event")
 		return err
 	} else if response.Success != true {
 		msg := fmt.Sprintf("failed to notify domain event: %s", response.Message)
@@ -201,7 +204,6 @@ func eventCallback(c cli.Connection, domain *api.Domain, libvirtEvent libvirtEve
 	if err != nil {
 		if !domainerrors.IsNotFound(err) {
 			log.Log.Reason(err).Error("Could not fetch the Domain.")
-			client.SendDomainEvent(newWatchEventError(err))
 			return
 		}
 		domain.SetState(api.NoState, api.ReasonNonExistent)
@@ -215,7 +217,6 @@ func eventCallback(c cli.Connection, domain *api.Domain, libvirtEvent libvirtEve
 		if err != nil {
 			if !domainerrors.IsNotFound(err) {
 				log.Log.Reason(err).Error("Could not fetch the Domain state.")
-				client.SendDomainEvent(newWatchEventError(err))
 				return
 			}
 			domain.SetState(api.NoState, api.ReasonNonExistent)
@@ -228,7 +229,6 @@ func eventCallback(c cli.Connection, domain *api.Domain, libvirtEvent libvirtEve
 			// NOTE: Getting domain metadata for a live-migrating VM isn't allowed
 			if !domainerrors.IsNotFound(err) && !domainerrors.IsInvalidOperation(err) {
 				log.Log.Reason(err).Error("Could not fetch the Domain specification.")
-				client.SendDomainEvent(newWatchEventError(err))
 				return
 			}
 		} else {
@@ -330,14 +330,14 @@ func (n *Notifier) StartDomainNotifier(
 			case agentUpdate := <-agentStore.AgentUpdated:
 				interfaceStatuses = agentUpdate.DomainInfo.Interfaces
 				guestOsInfo = agentUpdate.DomainInfo.OSInfo
-				if domainCache != nil && interfaceStatuses != nil {
+				if interfaceStatuses != nil {
 					interfaceStatuses = agentpoller.MergeAgentStatusesWithDomainData(domainCache.Spec.Devices.Interfaces, interfaceStatuses)
 				}
 
 				eventCallback(domainConn, domainCache, libvirtEvent{}, n, deleteNotificationSent,
 					interfaceStatuses, guestOsInfo)
 			case <-reconnectChan:
-				n.SendDomainEvent(newWatchEventError(fmt.Errorf("Libvirt reconnect")))
+				n.SendDomainEvent(newWatchEventError(fmt.Errorf("Libvirt reconnect, domain %s", domainName)))
 			}
 		}
 	}()

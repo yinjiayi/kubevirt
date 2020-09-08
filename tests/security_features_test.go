@@ -31,6 +31,8 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
 	"kubevirt.io/kubevirt/tests"
+	cd "kubevirt.io/kubevirt/tests/containerdisk"
+	"kubevirt.io/kubevirt/tests/flags"
 )
 
 var _ = Describe("SecurityFeatures", func() {
@@ -52,13 +54,20 @@ var _ = Describe("SecurityFeatures", func() {
 		var container k8sv1.Container
 		var vmi *v1.VirtualMachineInstance
 
-		Context("With selinuxLauncherType undefined", func() {
+		Context("With selinuxLauncherType as container_t", func() {
 			BeforeEach(func() {
-				tests.UpdateClusterConfigValueAndWait(virtconfig.SELinuxLauncherTypeKey, "")
-				vmi = tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
+				tests.UpdateClusterConfigValueAndWait(virtconfig.SELinuxLauncherTypeKey, "container_t")
+				vmi = tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
+
+				// VMIs with selinuxLauncherType container_t cannot have network interfaces, since that requires
+				// the `virt_launcher.process` selinux context
+				autoattachPodInterface := false
+				vmi.Spec.Domain.Devices.AutoattachPodInterface = &autoattachPodInterface
+				vmi.Spec.Domain.Devices.Interfaces = []v1.Interface{}
+				vmi.Spec.Networks = []v1.Network{}
 			})
 
-			It("[test_id:2953]Ensure virt-launcher pod securityContext type is not forced", func() {
+			It("[test_id:2953]Ensure virt-launcher pod securityContext type is correctly set", func() {
 
 				By("Starting a VirtualMachineInstance")
 				vmi, err = virtClient.VirtualMachineInstance(tests.NamespaceTestDefault).Create(vmi)
@@ -67,7 +76,7 @@ var _ = Describe("SecurityFeatures", func() {
 
 				By("Check virt-launcher pod SecurityContext values")
 				vmiPod := tests.GetRunningPodByVirtualMachineInstance(vmi, tests.NamespaceTestDefault)
-				Expect(vmiPod.Spec.SecurityContext.SELinuxOptions).To(BeNil())
+				Expect(vmiPod.Spec.SecurityContext.SELinuxOptions).To(Equal(&k8sv1.SELinuxOptions{Type: "container_t"}))
 			})
 
 			It("[test_id:2895]Make sure the virt-launcher pod is not priviledged", func() {
@@ -121,13 +130,13 @@ var _ = Describe("SecurityFeatures", func() {
 			It("[test_id:3787]Should honor custom SELinux type for virt-launcher", func() {
 
 				superPrivilegedType := "spc_t"
-				kubeVirtConfig, err := virtClient.CoreV1().ConfigMaps(tests.KubeVirtInstallNamespace).Get("kubevirt-config", metav1.GetOptions{})
+				kubeVirtConfig, err := virtClient.CoreV1().ConfigMaps(flags.KubeVirtInstallNamespace).Get("kubevirt-config", metav1.GetOptions{})
 				Expect(err).ToNot(HaveOccurred())
 				if kubeVirtConfig.Data[virtconfig.SELinuxLauncherTypeKey] != superPrivilegedType {
 					tests.UpdateClusterConfigValueAndWait(virtconfig.SELinuxLauncherTypeKey, superPrivilegedType)
 				}
 
-				vmi = tests.NewRandomVMIWithEphemeralDisk(tests.ContainerDiskFor(tests.ContainerDiskAlpine))
+				vmi = tests.NewRandomVMIWithEphemeralDisk(cd.ContainerDiskFor(cd.ContainerDiskAlpine))
 
 				By("Starting a New VMI")
 				vmi, err = virtClient.VirtualMachineInstance(tests.NamespaceTestDefault).Create(vmi)
@@ -154,13 +163,13 @@ var _ = Describe("SecurityFeatures", func() {
 			It("[test_id:4298]qemu process type is virt_launcher.process, when selinuxLauncherType is virt_launcher.process", func() {
 
 				launcherType := "virt_launcher.process"
-				kubeVirtConfig, err := virtClient.CoreV1().ConfigMaps(tests.KubeVirtInstallNamespace).Get("kubevirt-config", metav1.GetOptions{})
+				kubeVirtConfig, err := virtClient.CoreV1().ConfigMaps(flags.KubeVirtInstallNamespace).Get("kubevirt-config", metav1.GetOptions{})
 				Expect(err).ToNot(HaveOccurred())
 				if kubeVirtConfig.Data[virtconfig.SELinuxLauncherTypeKey] != launcherType {
 					tests.UpdateClusterConfigValueAndWait(virtconfig.SELinuxLauncherTypeKey, launcherType)
 				}
 
-				vmi = tests.NewRandomVMIWithEphemeralDisk(tests.ContainerDiskFor(tests.ContainerDiskAlpine))
+				vmi = tests.NewRandomVMIWithEphemeralDisk(cd.ContainerDiskFor(cd.ContainerDiskAlpine))
 
 				By("Starting a New VMI")
 				vmi, err = virtClient.VirtualMachineInstance(tests.NamespaceTestDefault).Create(vmi)
@@ -199,7 +208,7 @@ var _ = Describe("SecurityFeatures", func() {
 		var vmi *v1.VirtualMachineInstance
 
 		It("[test_id:4300]has precisely the documented extra capabilities relative to a regular user pod", func() {
-			vmi = tests.NewRandomVMIWithEphemeralDisk(tests.ContainerDiskFor(tests.ContainerDiskAlpine))
+			vmi = tests.NewRandomVMIWithEphemeralDisk(cd.ContainerDiskFor(cd.ContainerDiskAlpine))
 
 			By("Starting a New VMI")
 			vmi, err = virtClient.VirtualMachineInstance(tests.NamespaceTestDefault).Create(vmi)

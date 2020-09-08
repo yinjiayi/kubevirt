@@ -6,6 +6,7 @@ require (
 	github.com/Masterminds/semver v1.5.0
 	github.com/asaskevich/govalidator v0.0.0-20190424111038-f61b66f89f4a
 	github.com/blang/semver v3.5.1+incompatible
+	github.com/cloudflare/cfssl v1.4.1 // indirect
 	github.com/containernetworking/plugins v0.8.2
 	github.com/coreos/go-iptables v0.4.3
 	github.com/coreos/go-semver v0.3.0
@@ -16,6 +17,7 @@ require (
 	github.com/emicklei/go-restful v2.10.0+incompatible
 	github.com/emicklei/go-restful-openapi v0.10.0
 	github.com/evanphx/json-patch v4.5.0+incompatible
+	github.com/fatih/color v1.9.0 // indirect
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-kit/kit v0.9.0
@@ -26,7 +28,7 @@ require (
 	github.com/gogo/protobuf v1.3.0
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/golang/mock v1.2.0
-	github.com/golang/protobuf v1.3.3
+	github.com/golang/protobuf v1.4.1
 	github.com/google/go-github/v32 v32.0.0
 	github.com/google/goexpect v0.0.0-20190425035906-112704a48083
 	github.com/google/gofuzz v1.0.0
@@ -51,14 +53,16 @@ require (
 	github.com/pborman/uuid v1.2.0
 	github.com/prometheus/client_golang v1.1.0
 	github.com/smartystreets/goconvey v0.0.0-20190731233626-505e41936337 // indirect
+	github.com/songgao/water v0.0.0-20200317203138-2b4b6d7c09d8
 	github.com/spf13/cobra v0.0.5
 	github.com/spf13/pflag v1.0.5
 	github.com/subgraph/libmacouflage v0.0.1
 	github.com/vishvananda/netlink v0.0.0-20181108222139-023a6dafdcdf
 	golang.org/x/crypto v0.0.0-20190927123631-a832865fa7ad
 	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553
-	golang.org/x/sys v0.0.0-20191220220014-0732a990476f
+	golang.org/x/sys v0.0.0-20200223170610-d5e6a3e2c0ae
 	google.golang.org/grpc v1.30.0
+	google.golang.org/protobuf v1.25.0 // indirect
 	gopkg.in/cheggaaa/pb.v1 v1.0.28
 	gopkg.in/ini.v1 v1.42.0
 	gopkg.in/yaml.v2 v2.2.4
@@ -72,7 +76,7 @@ require (
 	kubevirt.io/client-go v0.0.0-00010101000000-000000000000
 	kubevirt.io/containerized-data-importer v1.10.9
 	kubevirt.io/qe-tools v0.1.6
-	libvirt.org/libvirt-go v5.0.0+incompatible
+	libvirt.org/libvirt-go v6.5.0+incompatible
 	sigs.k8s.io/controller-runtime v0.1.9 // indirect
 )
 
@@ -113,3 +117,5 @@ replace (
 
 	kubevirt.io/client-go => ./staging/src/kubevirt.io/client-go
 )
+
+go 1.13

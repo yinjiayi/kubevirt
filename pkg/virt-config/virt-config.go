@@ -58,10 +58,12 @@ const (
 	SmbiosConfigDefaultManufacturer                 = "KubeVirt"
 	SmbiosConfigDefaultProduct                      = "None"
 	DefaultPermitBridgeInterfaceOnPodNetwork        = true
-	DefaultSELinuxLauncherType                      = ""
+	DefaultSELinuxLauncherType                      = "virt_launcher.process"
 	SupportedGuestAgentVersions                     = "3.*,4.*"
 	DefaultARCHOVMFPath                            = "/usr/share/OVMF"
 	DefaultAARCH64OVMFPath                          = "/usr/share/AAVMF"
+	DefaultOVMFPath                                 = "/usr/share/OVMF"
+	DefaultMemBalloonStatsPeriod                    = 10
 )
 
 // Set default machine type and supported emulated machines based on architecture
@@ -86,6 +88,10 @@ func getDefaultOVMFPathForArch() string {
 }
 
 var DefaultOVMFPath = getDefaultOVMFPathForArch()
+
+func (c *ClusterConfig) GetMemBalloonStatsPeriod() int {
+	return c.GetConfig().MemBalloonStatsPeriod
+}
 
 func (c *ClusterConfig) IsUseEmulation() bool {
 	return c.GetConfig().DeveloperConfiguration.UseEmulation

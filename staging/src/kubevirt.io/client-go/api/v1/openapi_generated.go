@@ -301,6 +301,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"kubevirt.io/client-go/api/v1.CloudInitNoCloudSource":                                     schema_kubevirtio_client_go_api_v1_CloudInitNoCloudSource(ref),
 		"kubevirt.io/client-go/api/v1.ConfigMapVolumeSource":                                      schema_kubevirtio_client_go_api_v1_ConfigMapVolumeSource(ref),
 		"kubevirt.io/client-go/api/v1.ContainerDiskSource":                                        schema_kubevirtio_client_go_api_v1_ContainerDiskSource(ref),
+		"kubevirt.io/client-go/api/v1.CustomizeComponents":                                        schema_kubevirtio_client_go_api_v1_CustomizeComponents(ref),
 		"kubevirt.io/client-go/api/v1.DHCPOptions":                                                schema_kubevirtio_client_go_api_v1_DHCPOptions(ref),
 		"kubevirt.io/client-go/api/v1.DHCPPrivateOptions":                                         schema_kubevirtio_client_go_api_v1_DHCPPrivateOptions(ref),
 		"kubevirt.io/client-go/api/v1.DataVolumeSource":                                           schema_kubevirtio_client_go_api_v1_DataVolumeSource(ref),
@@ -352,6 +353,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"kubevirt.io/client-go/api/v1.NetworkConfiguration":                                       schema_kubevirtio_client_go_api_v1_NetworkConfiguration(ref),
 		"kubevirt.io/client-go/api/v1.NetworkSource":                                              schema_kubevirtio_client_go_api_v1_NetworkSource(ref),
 		"kubevirt.io/client-go/api/v1.PITTimer":                                                   schema_kubevirtio_client_go_api_v1_PITTimer(ref),
+		"kubevirt.io/client-go/api/v1.Patch":                                                      schema_kubevirtio_client_go_api_v1_Patch(ref),
 		"kubevirt.io/client-go/api/v1.PodNetwork":                                                 schema_kubevirtio_client_go_api_v1_PodNetwork(ref),
 		"kubevirt.io/client-go/api/v1.Port":                                                       schema_kubevirtio_client_go_api_v1_Port(ref),
 		"kubevirt.io/client-go/api/v1.Probe":                                                      schema_kubevirtio_client_go_api_v1_Probe(ref),
@@ -13946,6 +13948,37 @@ func schema_kubevirtio_client_go_api_v1_ContainerDiskSource(ref common.Reference
 	}
 }
 
+func schema_kubevirtio_client_go_api_v1_CustomizeComponents(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"patches": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("kubevirt.io/client-go/api/v1.Patch"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"kubevirt.io/client-go/api/v1.Patch"},
+	}
+}
+
 func schema_kubevirtio_client_go_api_v1_DHCPOptions(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -14180,6 +14213,13 @@ func schema_kubevirtio_client_go_api_v1_Devices(ref common.ReferenceCallback) co
 							Format:      "",
 						},
 					},
+					"autoattachMemBalloon": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Whether to attach the Memory balloon device with default period. Period can be adjusted in virt-config. Defaults to true.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 					"rng": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Whether to have random number generator from host",
@@ -14282,6 +14322,13 @@ func schema_kubevirtio_client_go_api_v1_Disk(ref common.ReferenceCallback) commo
 					"cache": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Cache specifies which kvm disk cache mode should be used.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"io": {
+						SchemaProps: spec.SchemaProps{
+							Description: "IO specifies which QEMU disk IO mode should be used. Supported values are: native, default, threads.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -15388,6 +15435,12 @@ func schema_kubevirtio_client_go_api_v1_KubeVirtConfiguration(ref common.Referen
 							},
 						},
 					},
+					"memBalloonStatsPeriod": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"integer"},
+							Format: "int32",
+						},
+					},
 				},
 			},
 		},
@@ -15525,17 +15578,36 @@ func schema_kubevirtio_client_go_api_v1_KubeVirtSpec(ref common.ReferenceCallbac
 							Ref: ref("kubevirt.io/client-go/api/v1.KubeVirtCertificateRotateStrategy"),
 						},
 					},
+					"productVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Designate the apps.kubevirt.io/version label for KubeVirt components. Useful if KubeVirt is included as part of a product. If ProductVersion is not specified, KubeVirt's version will be used.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"productName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Designate the apps.kubevirt.io/part-of label for KubeVirt components. Useful if KubeVirt is included as part of a product. If ProductName is not specified, the part-of label will be omitted.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"configuration": {
 						SchemaProps: spec.SchemaProps{
 							Description: "holds kubevirt configurations. same as the virt-configMap",
 							Ref:         ref("kubevirt.io/client-go/api/v1.KubeVirtConfiguration"),
 						},
 					},
+					"customizeComponents": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("kubevirt.io/client-go/api/v1.CustomizeComponents"),
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"kubevirt.io/client-go/api/v1.KubeVirtCertificateRotateStrategy", "kubevirt.io/client-go/api/v1.KubeVirtConfiguration"},
+			"kubevirt.io/client-go/api/v1.CustomizeComponents", "kubevirt.io/client-go/api/v1.KubeVirtCertificateRotateStrategy", "kubevirt.io/client-go/api/v1.KubeVirtConfiguration"},
 	}
 }
 
@@ -15897,6 +15969,42 @@ func schema_kubevirtio_client_go_api_v1_PITTimer(ref common.ReferenceCallback) c
 							Description: "Enabled set to false makes sure that the machine type or a preset can't add the timer. Defaults to true.",
 							Type:        []string{"boolean"},
 							Format:      "",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func schema_kubevirtio_client_go_api_v1_Patch(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"resourceName": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"resourceType": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"patch": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"type": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
 						},
 					},
 				},

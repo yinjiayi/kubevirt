@@ -18,6 +18,7 @@ import (
 	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/api"
 
 	"kubevirt.io/kubevirt/tests"
+	cd "kubevirt.io/kubevirt/tests/containerdisk"
 )
 
 func parseDeviceAddress(addrString string) []string {
@@ -43,7 +44,7 @@ func checkGPUDevice(vmi *v1.VirtualMachineInstance, gpuName string, prompt strin
 		&expect.BSnd{S: cmdCheck},
 		&expect.BExp{R: prompt},
 		&expect.BSnd{S: "echo $?\n"},
-		&expect.BExp{R: "0"},
+		&expect.BExp{R: tests.RetValue("0")},
 	}, 15)
 	Expect(err).ToNot(HaveOccurred(), "GPU device %q was not found in the VMI %s within the given timeout", gpuName, vmi.Name)
 }
@@ -58,9 +59,9 @@ var _ = Describe("GPU", func() {
 	})
 
 	Context("with ephemeral disk", func() {
-		It("Should create a valid VMI but pod should not go to running state", func() {
+		It("[test_id:4607]Should create a valid VMI but pod should not go to running state", func() {
 			gpuName := "random.com/gpu"
-			randomVMI := tests.NewRandomVMIWithEphemeralDisk(tests.ContainerDiskFor(tests.ContainerDiskCirros))
+			randomVMI := tests.NewRandomVMIWithEphemeralDisk(cd.ContainerDiskFor(cd.ContainerDiskCirros))
 			gpus := []v1.GPU{
 				v1.GPU{
 					Name:       "gpu1",
@@ -78,7 +79,7 @@ var _ = Describe("GPU", func() {
 			Expect(pod.Status.Conditions[0].Reason).To(Equal("Unschedulable"))
 		})
 
-		It("Should create a valid VMI and appropriate libvirt domain", func() {
+		It("[test_id:4608]Should create a valid VMI and appropriate libvirt domain", func() {
 			nodesList, err := virtClient.CoreV1().Nodes().List(metav1.ListOptions{})
 			var gpuName = ""
 			for _, item := range nodesList.Items {
@@ -93,7 +94,7 @@ var _ = Describe("GPU", func() {
 				}
 			}
 			Expect(gpuName).ToNot(Equal(""))
-			randomVMI := tests.NewRandomVMIWithEphemeralDisk(tests.ContainerDiskFor(tests.ContainerDiskCirros))
+			randomVMI := tests.NewRandomVMIWithEphemeralDisk(cd.ContainerDiskFor(cd.ContainerDiskCirros))
 			gpus := []v1.GPU{
 				v1.GPU{
 					Name:       "gpu1",

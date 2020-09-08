@@ -7,14 +7,12 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 # Additional bazel rules
 
-# fix for https://github.com/bazelbuild/rules_go/issues/1999 will be included in > v0.20.3
 http_archive(
     name = "io_bazel_rules_go",
-    sha256 = "aca4d0081b8bf96dce8f1395904ab1f21f5fea9c08afb9a9c67358982d4491eb",
-    strip_prefix = "rules_go-b2c7df325cf96bf8daa9c5d329baf85df4b405eb",
+    sha256 = "38392eb0617c1a9fdff17c4a284f012da13e4feefbaf87d04b3579b107902e9b",
     urls = [
-        "https://github.com/bazelbuild/rules_go/archive/b2c7df325cf96bf8daa9c5d329baf85df4b405eb.tar.gz",
-        "https://storage.googleapis.com/builddeps/aca4d0081b8bf96dce8f1395904ab1f21f5fea9c08afb9a9c67358982d4491eb",
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.22.8/rules_go-v0.22.8.tar.gz",
+        "https://github.com/bazelbuild/rules_go/releases/download/v0.22.8/rules_go-v0.22.8.tar.gz",
     ],
 )
 
@@ -69,19 +67,10 @@ http_archive(
 # Libvirt dependencies
 http_file(
     name = "libvirt_libs",
-    sha256 = "9ff62eb0ed238882a652444e0feb876a9d7878a45fd026a18f64e7ab98faebf0",
+    sha256 = "59f119cf1347d07c0fa048d0c85b3e0e4a34987c481b26229d0c86fc4a8b0a22",
     urls = [
-        "https://copr-be.cloud.fedoraproject.org/results/%40virtmaint-sig/for-kubevirt/fedora-30-x86_64/01034621-libvirt/libvirt-libs-5.0.0-2.fc30.x86_64.rpm",
-        "https://storage.googleapis.com/builddeps/9ff62eb0ed238882a652444e0feb876a9d7878a45fd026a18f64e7ab98faebf0",
-    ],
-)
-
-http_file(
-    name = "libvirt_libs_ppc64le",
-    sha256 = "7993e9fa2a3455aacde56833c476f5900fb0c4a76dc9f0468676a94422d53e3b",
-    urls = [
-        "https://copr-be.cloud.fedoraproject.org/results/%40virtmaint-sig/for-kubevirt/fedora-30-ppc64le/01113510-libvirt/libvirt-libs-5.0.0-2.fc30.ppc64le.rpm",
-        "https://storage.googleapis.com/builddeps/7993e9fa2a3455aacde56833c476f5900fb0c4a76dc9f0468676a94422d53e3b",
+        "https://copr-be.cloud.fedoraproject.org/results/%40virtmaint-sig/for-kubevirt/fedora-31-x86_64/01113510-libvirt/libvirt-libs-5.0.0-2.fc31.x86_64.rpm",
+        "https://storage.googleapis.com/builddeps/59f119cf1347d07c0fa048d0c85b3e0e4a34987c481b26229d0c86fc4a8b0a22",
     ],
 )
 
@@ -95,19 +84,10 @@ http_file(
 
 http_file(
     name = "libvirt_devel",
-    sha256 = "e34ca39bb94786b901a626143527f86cae1b6f1c8d1414165465d89e146a612e",
+    sha256 = "bf566d24c6657c8c28cf266c8ba796436b605dfa8c5162e1add4c8a56f0706b0",
     urls = [
-        "https://copr-be.cloud.fedoraproject.org/results/%40virtmaint-sig/for-kubevirt/fedora-30-x86_64/01034621-libvirt/libvirt-devel-5.0.0-2.fc30.x86_64.rpm",
-        "https://storage.googleapis.com/builddeps/e34ca39bb94786b901a626143527f86cae1b6f1c8d1414165465d89e146a612e",
-    ],
-)
-
-http_file(
-    name = "libvirt_devel_ppc64le",
-    sha256 = "45ddd9ba4508c72c4b6a6f03c2198ae4f918fa1324abf566e7b2e80ab51618f2",
-    urls = [
-        "https://copr-be.cloud.fedoraproject.org/results/%40virtmaint-sig/for-kubevirt/fedora-30-ppc64le/01113510-libvirt/libvirt-devel-5.0.0-2.fc30.ppc64le.rpm",
-        "https://storage.googleapis.com/builddeps/45ddd9ba4508c72c4b6a6f03c2198ae4f918fa1324abf566e7b2e80ab51618f2",
+        "https://copr-be.cloud.fedoraproject.org/results/%40virtmaint-sig/for-kubevirt/fedora-31-x86_64/01113510-libvirt/libvirt-devel-5.0.0-2.fc31.x86_64.rpm",
+        "https://storage.googleapis.com/builddeps/bf566d24c6657c8c28cf266c8ba796436b605dfa8c5162e1add4c8a56f0706b0",
     ],
 )
 
@@ -234,7 +214,7 @@ load(
 go_rules_dependencies()
 
 go_register_toolchains(
-    go_version = "1.12.8",
+    go_version = "1.13.14",
     nogo = "@//:nogo_vet",
 )
 
@@ -403,6 +383,13 @@ container_pull(
     puller_linux = "@go_puller_linux_aarch64//file:downloaded",
     registry = "index.docker.io",
     repository = "library/fedora",
+
+container_pull(
+    name = "fedora_sriov_lane",
+    digest = "sha256:2d332d28863d0e415d58e335e836bd4f8a8c714e7a9d1f8f87418ef3db7c0afb",
+    registry = "index.docker.io",
+    repository = "kubevirt/fedora-sriov-testing",
+    #tag = "32",
 )
 
 # Pull base image libvirt
@@ -772,3 +759,21 @@ go_repository(
 )
 
 register_toolchains("//:py_toolchain")
+
+go_repository(
+    name = "org_golang_x_mod",
+    build_file_generation = "on",
+    build_file_proto_mode = "disable",
+    importpath = "golang.org/x/mod",
+    sum = "h1:RM4zey1++hCTbCVQfnWeKs9/IEsaBLA8vTkd0WVtmH4=",
+    version = "v0.3.0",
+)
+
+go_repository(
+    name = "org_golang_x_xerrors",
+    build_file_generation = "on",
+    build_file_proto_mode = "disable",
+    importpath = "golang.org/x/xerrors",
+    sum = "h1:go1bK/D/BFZV2I8cIQd1NKEZ+0owSTG1fDTci4IqFcE=",
+    version = "v0.0.0-20200804184101-5ec99f83aff1",
+)

@@ -32,6 +32,7 @@ import (
 	"kubevirt.io/client-go/log"
 	"kubevirt.io/kubevirt/pkg/config"
 	"kubevirt.io/kubevirt/tests"
+	cd "kubevirt.io/kubevirt/tests/containerdisk"
 )
 
 var _ = Describe("[rfe_id:899][crit:medium][vendor:cnv-qe@redhat.com][level:component]Config", func() {
@@ -104,7 +105,7 @@ var _ = Describe("[rfe_id:899][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 					// mount iso ConfigMap image
 					&expect.BSnd{S: "mount /dev/sda /mnt\n"},
 					&expect.BSnd{S: "echo $?\n"},
-					&expect.BExp{R: "0"},
+					&expect.BExp{R: tests.RetValue("0")},
 					&expect.BSnd{S: "cat /mnt/option1 /mnt/option2 /mnt/option3\n"},
 					&expect.BExp{R: expectedOutput},
 				}, 200*time.Second)
@@ -198,7 +199,7 @@ var _ = Describe("[rfe_id:899][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 					// mount iso Secret image
 					&expect.BSnd{S: "mount /dev/sda /mnt\n"},
 					&expect.BSnd{S: "echo $?\n"},
-					&expect.BExp{R: "0"},
+					&expect.BExp{R: tests.RetValue("0")},
 					&expect.BSnd{S: "cat /mnt/user /mnt/password\n"},
 					&expect.BExp{R: expectedOutput},
 				}, 200*time.Second)
@@ -281,7 +282,7 @@ var _ = Describe("[rfe_id:899][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 				// mount service account iso image
 				&expect.BSnd{S: "mount /dev/sda /mnt\n"},
 				&expect.BSnd{S: "echo $?\n"},
-				&expect.BExp{R: "0"},
+				&expect.BExp{R: tests.RetValue("0")},
 				&expect.BSnd{S: "cat /mnt/namespace\n"},
 				&expect.BExp{R: tests.NamespaceTestDefault},
 				&expect.BSnd{S: "tail -c 20 /mnt/token\n"},
@@ -336,8 +337,8 @@ var _ = Describe("[rfe_id:899][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 				By("Running VMI")
 
 				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdataHighMemory(
-					tests.ContainerDiskFor(
-						tests.ContainerDiskFedora), "#!/bin/bash\necho \"fedora\" | passwd fedora --stdin\n")
+					cd.ContainerDiskFor(
+						cd.ContainerDiskFedora), "#!/bin/bash\necho \"fedora\" | passwd fedora --stdin\n")
 				tests.AddConfigMapDisk(vmi, configMapName, configMapName)
 				tests.AddSecretDisk(vmi, secretName, secretName)
 				tests.AddConfigMapDiskWithCustomLabel(vmi, configMapName, "random1", "configlabel")
@@ -348,7 +349,7 @@ var _ = Describe("[rfe_id:899][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 					vmi.Spec.Domain.Devices.Disks[i].Disk = &v1.DiskTarget{Bus: "virtio"}
 				}
 
-				tests.RunVMIAndExpectLaunch(vmi, 90)
+				vmi = tests.RunVMIAndExpectLaunch(vmi, 90)
 
 				By("Checking if ConfigMap has been attached to the pod")
 				vmiPod := tests.GetRunningPodByVirtualMachineInstance(vmi, tests.NamespaceTestDefault)
@@ -376,7 +377,7 @@ var _ = Describe("[rfe_id:899][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 					&expect.BExp{R: "#"},
 					&expect.BSnd{S: "mount /dev/vdc /mnt\n"},
 					&expect.BSnd{S: "echo $?\n"},
-					&expect.BExp{R: "0"},
+					&expect.BExp{R: tests.RetValue("0")},
 					&expect.BSnd{S: "cat /mnt/config1 /mnt/config2 /mnt/config3\n"},
 					&expect.BExp{R: expectedOutputCfgMap},
 				}, 200*time.Second)
@@ -402,7 +403,7 @@ var _ = Describe("[rfe_id:899][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 					// mount Secret image
 					&expect.BSnd{S: "mount /dev/vdd /mnt\n"},
 					&expect.BSnd{S: "echo $?\n"},
-					&expect.BExp{R: "0"},
+					&expect.BExp{R: tests.RetValue("0")},
 					&expect.BSnd{S: "cat /mnt/user /mnt/password\n"},
 					&expect.BExp{R: expectedOutputSecret},
 				}, 200*time.Second)
@@ -460,10 +461,10 @@ var _ = Describe("[rfe_id:899][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 
 				By("Running VMI")
 				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdataHighMemory(
-					tests.ContainerDiskFor(
-						tests.ContainerDiskFedora), "#!/bin/bash\necho \"fedora\" | passwd fedora --stdin\n")
+					cd.ContainerDiskFor(
+						cd.ContainerDiskFedora), "#!/bin/bash\necho \"fedora\" | passwd fedora --stdin\n")
 				tests.AddSecretDisk(vmi, secretName, secretName)
-				tests.RunVMIAndExpectLaunch(vmi, 90)
+				vmi = tests.RunVMIAndExpectLaunch(vmi, 90)
 
 				By("Checking if Secret has been attached to the pod")
 				vmiPod := tests.GetRunningPodByVirtualMachineInstance(vmi, tests.NamespaceTestDefault)
@@ -497,16 +498,16 @@ var _ = Describe("[rfe_id:899][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 				res, err := expecter.ExpectBatch([]expect.Batcher{
 					// mount iso Secret image
 					&expect.BSnd{S: "sudo su -\n"},
-					&expect.BExp{R: "#"},
+					&expect.BExp{R: "\\#"},
 					&expect.BSnd{S: "mount /dev/sda /mnt\n"},
 					&expect.BSnd{S: "echo $?\n"},
-					&expect.BExp{R: "0"},
+					&expect.BExp{R: tests.RetValue("0")},
 					&expect.BSnd{S: "grep \"PRIVATE KEY\" /mnt/ssh-privatekey\n"},
 					&expect.BSnd{S: "echo $?\n"},
-					&expect.BExp{R: "0"},
+					&expect.BExp{R: tests.RetValue("0")},
 					&expect.BSnd{S: "grep ssh-rsa /mnt/ssh-publickey\n"},
 					&expect.BSnd{S: "echo $?\n"},
-					&expect.BExp{R: "0"},
+					&expect.BExp{R: tests.RetValue("0")},
 				}, 200*time.Second)
 				log.DefaultLogger().Object(vmi).Infof("%v", res)
 				Expect(err).ToNot(HaveOccurred())

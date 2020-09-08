@@ -25,7 +25,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/emicklei/go-restful"
@@ -34,6 +37,7 @@ import (
 	k8sv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	k8coresv1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -87,19 +91,23 @@ const (
 	maxRequestsInFlight = 3
 	// Default port that virt-handler listens to console requests
 	defaultConsoleServerPort = 8186
+
+	// Default period for resyncing virt-launcher domain cache
+	defaultDomainResyncPeriodSeconds = 300
 )
 
 type virtHandlerApp struct {
 	service.ServiceListen
-	HostOverride            string
-	PodIpAddress            string
-	VirtShareDir            string
-	VirtPrivateDir          string
-	VirtLibDir              string
-	KubeletPodsDir          string
-	WatchdogTimeoutDuration time.Duration
-	MaxDevices              int
-	MaxRequestsInFlight     int
+	HostOverride              string
+	PodIpAddress              string
+	VirtShareDir              string
+	VirtPrivateDir            string
+	VirtLibDir                string
+	KubeletPodsDir            string
+	WatchdogTimeoutDuration   time.Duration
+	MaxDevices                int
+	MaxRequestsInFlight       int
+	domainResyncPeriodSeconds int
 
 	virtCli   kubecli.KubevirtClient
 	namespace string
@@ -119,6 +127,14 @@ func (app *virtHandlerApp) prepareCertManager() (err error) {
 	app.clientcertmanager = bootstrap.NewFileCertificateManager("/etc/virt-handler/clientcertificates")
 	app.servercertmanager = bootstrap.NewFileCertificateManager("/etc/virt-handler/servercertificates")
 	return
+}
+
+func (app *virtHandlerApp) markNodeAsUnschedulable(logger *log.FilteredLogger) {
+	data := []byte(fmt.Sprintf(`{"metadata": { "labels": {"%s": "false"}}}`, v1.NodeSchedulable))
+	_, err := app.virtCli.CoreV1().Nodes().Patch(app.HostOverride, types.StrategicMergePatchType, data)
+	if err != nil {
+		logger.V(1).Level(log.ERROR).Log("Unable to mark node as unschedulable", err.Error())
+	}
 }
 
 func (app *virtHandlerApp) Run() {
@@ -155,6 +171,20 @@ func (app *virtHandlerApp) Run() {
 	if err != nil {
 		panic(err)
 	}
+
+	app.markNodeAsUnschedulable(logger)
+
+	go func() {
+		sigint := make(chan os.Signal, 1)
+
+		signal.Notify(sigint, syscall.SIGTERM)
+
+		<-sigint
+
+		app.markNodeAsUnschedulable(logger)
+		os.Exit(0)
+	}()
+
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&k8coresv1.EventSinkImpl{Interface: app.virtCli.CoreV1().Events(k8sv1.NamespaceAll)})
 	// Scheme is used to create an ObjectReference from an Object (e.g. VirtualMachineInstance) during Event creation
@@ -186,7 +216,7 @@ func (app *virtHandlerApp) Run() {
 	)
 
 	// Wire Domain controller
-	domainSharedInformer, err := virtcache.NewSharedInformer(app.VirtShareDir, int(app.WatchdogTimeoutDuration.Seconds()), recorder, vmSourceSharedInformer.GetStore())
+	domainSharedInformer, err := virtcache.NewSharedInformer(app.VirtShareDir, int(app.WatchdogTimeoutDuration.Seconds()), recorder, vmSourceSharedInformer.GetStore(), time.Duration(app.domainResyncPeriodSeconds)*time.Second)
 	if err != nil {
 		panic(err)
 	}
@@ -207,6 +237,12 @@ func (app *virtHandlerApp) Run() {
 	// That record isn't deleted from this node until the VMI
 	// is completely torn down.
 	err = virtcache.InitializeGhostRecordCache(filepath.Join(app.VirtPrivateDir, "ghost-records"))
+	if err != nil {
+		panic(err)
+	}
+
+	// Directory to store notwork information related to VMIs
+	err = os.MkdirAll(util.NetworkInfoDir, 0755)
 	if err != nil {
 		panic(err)
 	}
@@ -292,6 +328,13 @@ func (app *virtHandlerApp) Run() {
 		err = se.InstallPolicy("/var/run/kubevirt")
 		if err != nil {
 			panic(fmt.Errorf("failed to install virt-launcher selinux policy: %v", err))
+		}
+
+		// relabel tun device
+		unprivilegedContainerSELinuxLabel := "system_u:object_r:container_file_t:s0"
+		err = relabelFiles(unprivilegedContainerSELinuxLabel, "/dev/net/tun", "/dev/null")
+		if err != nil {
+			panic(fmt.Errorf("error relabeling required files: %v", err))
 		}
 	} else if err != nil {
 		//an error occured
@@ -386,6 +429,10 @@ func (app *virtHandlerApp) AddFlags() {
 
 	flag.IntVar(&app.consoleServerPort, "console-server-port", defaultConsoleServerPort,
 		"The port virt-handler listens on for console requests")
+
+	flag.IntVar(&app.domainResyncPeriodSeconds, "domain-resync-period-seconds", defaultDomainResyncPeriodSeconds,
+		"Recurring period for resyncing all known virt-launcher domains.")
+
 }
 
 func (app *virtHandlerApp) setupTLS(factory controller.KubeInformerFactory) error {
@@ -429,5 +476,18 @@ func copy(sourceFile string, targetFile string) error {
 	if err != nil {
 		return fmt.Errorf("failed to make file executable: %v", err)
 	}
+	return nil
+}
+
+func relabelFiles(newLabel string, files ...string) error {
+	relabelArgs := []string{"selinux", "relabel", newLabel}
+	for _, file := range files {
+		cmd := exec.Command("virt-chroot", append(relabelArgs, file)...)
+		err := cmd.Run()
+		if err != nil {
+			return fmt.Errorf("error relabeling file %s with label %s. Reason: %v", file, newLabel, err)
+		}
+	}
+
 	return nil
 }

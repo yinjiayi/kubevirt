@@ -65,6 +65,7 @@ var (
 )
 
 const StandardLauncherSocketFileName = "launcher-sock"
+const StandardInitLauncherSocketFileName = "launcher-init-sock"
 const StandardLauncherUnresponsiveFileName = "launcher-unresponsive"
 
 type MigrationOptions struct {
@@ -222,6 +223,25 @@ func SocketFilePathOnHost(podUID string) string {
 }
 
 // gets the cmd socket for a VMI
+func FindPodDirOnHost(vmi *v1.VirtualMachineInstance) (string, error) {
+
+	// It is possible for multiple pods to be active on a single VMI
+	// during migrations. This loop will discover the active pod on
+	// this particular local node if it exists. A active pod not
+	// running on this node will not have a kubelet pods directory,
+	// so it will not be found.
+	for podUID, _ := range vmi.Status.ActivePods {
+		socketPodDir := SocketDirectoryOnHost(string(podUID))
+		exists, _ := diskutils.FileExists(socketPodDir)
+		if exists {
+			return socketPodDir, nil
+		}
+	}
+
+	return "", fmt.Errorf("No command socketdir for vmi %s", vmi.UID)
+}
+
+// gets the cmd socket for a VMI
 func FindSocketOnHost(vmi *v1.VirtualMachineInstance) (string, error) {
 	if string(vmi.UID) != "" {
 		legacySockFile := string(vmi.UID) + "_sock"
@@ -232,6 +252,8 @@ func FindSocketOnHost(vmi *v1.VirtualMachineInstance) (string, error) {
 		}
 	}
 
+	socketsFound := 0
+	foundSocket := ""
 	// It is possible for multiple pods to be active on a single VMI
 	// during migrations. This loop will discover the active pod on
 	// this particular local node if it exists. A active pod not
@@ -241,16 +263,27 @@ func FindSocketOnHost(vmi *v1.VirtualMachineInstance) (string, error) {
 		socket := SocketFilePathOnHost(string(podUID))
 		exists, _ := diskutils.FileExists(socket)
 		if exists {
-			return socket, nil
+			foundSocket = socket
+			socketsFound++
 		}
 	}
 
-	return "", fmt.Errorf("No command socket found for vmi %s", vmi.UID)
+	if socketsFound == 1 {
+		return foundSocket, nil
+	} else if socketsFound > 1 {
+		return "", fmt.Errorf("Found multiple sockets for vmi %s/%s. waiting for only one to exist", vmi.Namespace, vmi.Name)
+	}
 
+	return "", fmt.Errorf("No command socket found for vmi %s", vmi.UID)
 }
 
 func SocketOnGuest() string {
 	sockFile := StandardLauncherSocketFileName
+	return filepath.Join(LegacySocketsDirectory(), sockFile)
+}
+
+func UninitializedSocketOnGuest() string {
+	sockFile := StandardInitLauncherSocketFileName
 	return filepath.Join(LegacySocketsDirectory(), sockFile)
 }
 

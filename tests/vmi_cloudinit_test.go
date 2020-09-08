@@ -39,6 +39,7 @@ import (
 	"kubevirt.io/kubevirt/pkg/util/net/dns"
 	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/api"
 	"kubevirt.io/kubevirt/tests"
+	cd "kubevirt.io/kubevirt/tests/containerdisk"
 )
 
 const (
@@ -55,7 +56,7 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 	var virtClient kubecli.KubevirtClient
 
 	var (
-		LaunchVMI                 func(*v1.VirtualMachineInstance)
+		LaunchVMI                 func(*v1.VirtualMachineInstance) *v1.VirtualMachineInstance
 		VerifyUserDataVMI         func(*v1.VirtualMachineInstance, []expect.Batcher, time.Duration)
 		MountCloudInitNoCloud     func(*v1.VirtualMachineInstance, string)
 		MountCloudInitConfigDrive func(*v1.VirtualMachineInstance, string)
@@ -67,15 +68,16 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 		virtClient, err = kubecli.GetKubevirtClient()
 		tests.PanicOnError(err)
 
-		LaunchVMI = func(vmi *v1.VirtualMachineInstance) {
+		LaunchVMI = func(vmi *v1.VirtualMachineInstance) *v1.VirtualMachineInstance {
 			By("Starting a VirtualMachineInstance")
 			obj, err := virtClient.RestClient().Post().Resource("virtualmachineinstances").Namespace(tests.NamespaceTestDefault).Body(vmi).Do().Get()
 			Expect(err).To(BeNil())
 
 			By("Waiting the VirtualMachineInstance start")
-			_, ok := obj.(*v1.VirtualMachineInstance)
+			vmi, ok := obj.(*v1.VirtualMachineInstance)
 			Expect(ok).To(BeTrue(), "Object is not of type *v1.VirtualMachineInstance")
 			Expect(tests.WaitForSuccessfulVMIStart(obj)).ToNot(BeEmpty())
+			return vmi
 		}
 
 		VerifyUserDataVMI = func(vmi *v1.VirtualMachineInstance, commands []expect.Batcher, timeout time.Duration) {
@@ -99,7 +101,7 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 					&expect.BSnd{S: cmdCheck},
 					&expect.BExp{R: prompt},
 					&expect.BSnd{S: "echo $?\n"},
-					&expect.BExp{R: "0"},
+					&expect.BExp{R: tests.RetValue("0")},
 				}, 15)
 				Expect(err).ToNot(HaveOccurred())
 			}
@@ -147,7 +149,7 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 			It("[test_id:1615]should have cloud-init data", func() {
 				userData := fmt.Sprintf("#!/bin/sh\n\necho '%s'\n", expectedUserData)
 
-				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), userData)
+				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), userData)
 				LaunchVMI(vmi)
 				VerifyUserDataVMI(vmi, []expect.Batcher{
 					&expect.BSnd{S: "\n"},
@@ -162,7 +164,7 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 						fedoraPassword,
 						sshAuthorizedKey,
 					)
-					vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdataHighMemory(tests.ContainerDiskFor(tests.ContainerDiskFedora), userData)
+					vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdataHighMemory(cd.ContainerDiskFor(cd.ContainerDiskFedora), userData)
 
 					LaunchVMI(vmi)
 
@@ -185,7 +187,7 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 			It("[test_id:3178]should have cloud-init data", func() {
 				userData := fmt.Sprintf("#!/bin/sh\n\necho '%s'\n", expectedUserData)
 
-				vmi := tests.NewRandomVMIWithEphemeralDiskAndConfigDriveUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), userData)
+				vmi := tests.NewRandomVMIWithEphemeralDiskAndConfigDriveUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), userData)
 				LaunchVMI(vmi)
 				VerifyUserDataVMI(vmi, []expect.Batcher{
 					&expect.BSnd{S: "\n"},
@@ -200,7 +202,7 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 						fedoraPassword,
 						sshAuthorizedKey,
 					)
-					vmi := tests.NewRandomVMIWithEphemeralDiskAndConfigDriveUserdataHighMemory(tests.ContainerDiskFor(tests.ContainerDiskFedora), userData)
+					vmi := tests.NewRandomVMIWithEphemeralDiskAndConfigDriveUserdataHighMemory(cd.ContainerDiskFor(cd.ContainerDiskFedora), userData)
 
 					LaunchVMI(vmi)
 
@@ -222,9 +224,9 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 		Context("with cloudInitNoCloud userData source", func() {
 			It("[test_id:1617]should process provided cloud-init data", func() {
 				userData := fmt.Sprintf("#!/bin/sh\n\necho '%s'\n", expectedUserData)
-				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), userData)
+				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), userData)
 
-				LaunchVMI(vmi)
+				vmi = LaunchVMI(vmi)
 
 				By("executing a user-data script")
 				VerifyUserDataVMI(vmi, []expect.Batcher{
@@ -249,9 +251,9 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 		Context("with cloudInitConfigDrive userData source", func() {
 			It("[test_id:3180]should process provided cloud-init data", func() {
 				userData := fmt.Sprintf("#!/bin/sh\n\necho '%s'\n", expectedUserData)
-				vmi := tests.NewRandomVMIWithEphemeralDiskAndConfigDriveUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), userData)
+				vmi := tests.NewRandomVMIWithEphemeralDiskAndConfigDriveUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), userData)
 
-				LaunchVMI(vmi)
+				vmi = LaunchVMI(vmi)
 
 				By("executing a user-data script")
 				VerifyUserDataVMI(vmi, []expect.Batcher{
@@ -275,7 +277,7 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 
 		It("[test_id:1618]should take user-data from k8s secret", func() {
 			userData := fmt.Sprintf("#!/bin/sh\n\necho '%s'\n", expectedUserData)
-			vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "")
+			vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "")
 
 			idx := 0
 			for i, volume := range vmi.Spec.Volumes {
@@ -323,7 +325,7 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 		Context("with cloudInitNoCloud networkData", func() {
 			It("[test_id:3181]should have cloud-init network-config with NetworkData source", func() {
 				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdataNetworkData(
-					tests.ContainerDiskFor(tests.ContainerDiskCirros), testUserData, testNetworkData, false)
+					cd.ContainerDiskFor(cd.ContainerDiskCirros), testUserData, testNetworkData, false)
 				LaunchVMI(vmi)
 				tests.WaitUntilVMIReady(vmi, tests.LoggedInCirrosExpecter)
 
@@ -338,7 +340,7 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 			})
 			It("[test_id:3182]should have cloud-init network-config with NetworkDataBase64 source", func() {
 				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdataNetworkData(
-					tests.ContainerDiskFor(tests.ContainerDiskCirros), testUserData, testNetworkData, true)
+					cd.ContainerDiskFor(cd.ContainerDiskCirros), testUserData, testNetworkData, true)
 				LaunchVMI(vmi)
 				tests.WaitUntilVMIReady(vmi, tests.LoggedInCirrosExpecter)
 
@@ -353,7 +355,7 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 			})
 			It("[test_id:3183]should have cloud-init network-config from k8s secret", func() {
 				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdataNetworkData(
-					tests.ContainerDiskFor(tests.ContainerDiskCirros), "", "", false)
+					cd.ContainerDiskFor(cd.ContainerDiskCirros), "", "", false)
 
 				idx := 0
 				for i, volume := range vmi.Spec.Volumes {
@@ -416,7 +418,7 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 		Context("with cloudInitConfigDrive networkData", func() {
 			It("[test_id:3184]should have cloud-init network-config with NetworkData source", func() {
 				vmi := tests.NewRandomVMIWithEphemeralDiskAndConfigDriveUserdataNetworkData(
-					tests.ContainerDiskFor(tests.ContainerDiskCirros), testUserData, testNetworkData, false)
+					cd.ContainerDiskFor(cd.ContainerDiskCirros), testUserData, testNetworkData, false)
 
 				LaunchVMI(vmi)
 				tests.WaitUntilVMIReady(vmi, tests.LoggedInCirrosExpecter)
@@ -430,9 +432,9 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 				By("checking cloudinit user-data")
 				CheckCloudInitFile(vmi, "#", "openstack/latest/user_data", testUserData)
 			})
-			It("should have cloud-init meta_data with tagged devices", func() {
+			It("[test_id:4622]should have cloud-init meta_data with tagged devices", func() {
 				vmi := tests.NewRandomVMIWithEphemeralDiskAndConfigDriveUserdataNetworkData(
-					tests.ContainerDiskFor(tests.ContainerDiskCirros), testUserData, testNetworkData, false)
+					cd.ContainerDiskFor(cd.ContainerDiskCirros), testUserData, testNetworkData, false)
 				vmi.Spec.Domain.Devices.Interfaces = []v1.Interface{{Name: "default", Tag: "specialNet", InterfaceBindingMethod: v1.InterfaceBindingMethod{Masquerade: &v1.InterfaceMasquerade{}}}}
 				vmi.Spec.Networks = []v1.Network{*v1.DefaultPodNetwork()}
 				LaunchVMI(vmi)
@@ -480,7 +482,7 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 			})
 			It("[test_id:3185]should have cloud-init network-config with NetworkDataBase64 source", func() {
 				vmi := tests.NewRandomVMIWithEphemeralDiskAndConfigDriveUserdataNetworkData(
-					tests.ContainerDiskFor(tests.ContainerDiskCirros), testUserData, testNetworkData, true)
+					cd.ContainerDiskFor(cd.ContainerDiskCirros), testUserData, testNetworkData, true)
 				LaunchVMI(vmi)
 				tests.WaitUntilVMIReady(vmi, tests.LoggedInCirrosExpecter)
 
@@ -495,7 +497,7 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 			})
 			It("[test_id:3186]should have cloud-init network-config from k8s secret", func() {
 				vmi := tests.NewRandomVMIWithEphemeralDiskAndConfigDriveUserdataNetworkData(
-					tests.ContainerDiskFor(tests.ContainerDiskCirros), "", "", false)
+					cd.ContainerDiskFor(cd.ContainerDiskCirros), "", "", false)
 
 				idx := 0
 				for i, volume := range vmi.Spec.Volumes {
@@ -555,7 +557,7 @@ var _ = Describe("[rfe_id:151][crit:high][vendor:cnv-qe@redhat.com][level:compon
 
 			It("[test_id:3187]should have cloud-init userdata and network-config from separate k8s secrets", func() {
 				vmi := tests.NewRandomVMIWithEphemeralDiskAndConfigDriveUserdataNetworkData(
-					tests.ContainerDiskFor(tests.ContainerDiskCirros), "", "", false)
+					cd.ContainerDiskFor(cd.ContainerDiskCirros), "", "", false)
 
 				idx := 0
 				for i, volume := range vmi.Spec.Volumes {

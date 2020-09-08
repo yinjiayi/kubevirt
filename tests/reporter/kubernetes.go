@@ -17,19 +17,23 @@ import (
 	"github.com/onsi/ginkgo/types"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apiservices "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1beta1"
 
 	v12 "kubevirt.io/client-go/api/v1"
 	"kubevirt.io/client-go/kubecli"
 	"kubevirt.io/client-go/log"
 	"kubevirt.io/kubevirt/tests"
+	"kubevirt.io/kubevirt/tests/flags"
 )
 
 const (
-	sriovEntityURITemplate       = "/apis/sriovnetwork.openshift.io/v1/namespaces/%s/%s/"
-	sriovNetworksEntity          = "sriovnetworks"
-	sriovNodeNetworkPolicyEntity = "sriovnetworknodepolicies"
-	sriovNodeStateEntity         = "sriovnetworknodestates"
-	sriovOperatorConfigsEntity   = "sriovoperatorconfigs"
+	sriovEntityURITemplate            = "/apis/sriovnetwork.openshift.io/v1/namespaces/%s/%s/"
+	sriovNetworksEntity               = "sriovnetworks"
+	sriovNodeNetworkPolicyEntity      = "sriovnetworknodepolicies"
+	sriovNodeStateEntity              = "sriovnetworknodestates"
+	sriovOperatorConfigsEntity        = "sriovoperatorconfigs"
+	k8sCNICNCFEntityURLTemplate       = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/%s/"
+	networkAttachmentDefinitionEntity = "network-attachment-definitions"
 )
 
 type KubernetesReporter struct {
@@ -100,6 +104,9 @@ func (r *KubernetesReporter) Dump(duration time.Duration) {
 	r.logPVCs(virtCli)
 	r.logPVs(virtCli)
 	r.logPods(virtCli)
+	r.logAPIServices(virtCli)
+	r.logServices(virtCli)
+	r.logEndpoints(virtCli)
 	r.logVMIs(virtCli)
 	r.logConfigMaps(virtCli)
 	r.logSecrets(virtCli)
@@ -111,6 +118,7 @@ func (r *KubernetesReporter) Dump(duration time.Duration) {
 	r.logDomainXMLs(virtCli)
 	r.logLogs(virtCli, since)
 	r.logSRIOVInfo(virtCli)
+	r.logNetworkAttachmentDefinitionInfo(virtCli)
 }
 
 // Cleanup cleans up the current content of the artifactsDir
@@ -218,7 +226,7 @@ func (r *KubernetesReporter) logDMESG(virtCli kubecli.KubevirtClient, since time
 				return
 			}
 			defer f.Close()
-			pod, err := kubecli.NewVirtHandlerClient(virtCli).Namespace(tests.KubeVirtInstallNamespace).ForNode(node).Pod()
+			pod, err := kubecli.NewVirtHandlerClient(virtCli).Namespace(flags.KubeVirtInstallNamespace).ForNode(node).Pod()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "failed to get virt-handler pod on node %s: %v", node, err)
 				return
@@ -273,7 +281,7 @@ func (r *KubernetesReporter) logAuditLogs(virtCli kubecli.KubevirtClient, since 
 				return
 			}
 			defer f.Close()
-			pod, err := kubecli.NewVirtHandlerClient(virtCli).Namespace(tests.KubeVirtInstallNamespace).ForNode(node).Pod()
+			pod, err := kubecli.NewVirtHandlerClient(virtCli).Namespace(flags.KubeVirtInstallNamespace).ForNode(node).Pod()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "failed to get virt-handler pod on node %s: %v", node, err)
 				return
@@ -327,7 +335,7 @@ func (r *KubernetesReporter) logJournal(virtCli kubecli.KubevirtClient, duration
 	nodes := getNodesWithVirtLauncher(virtCli)
 
 	for _, node := range nodes {
-		pod, err := kubecli.NewVirtHandlerClient(virtCli).Namespace(tests.KubeVirtInstallNamespace).ForNode(node).Pod()
+		pod, err := kubecli.NewVirtHandlerClient(virtCli).Namespace(flags.KubeVirtInstallNamespace).ForNode(node).Pod()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to get virt-handler pod on node %s: %v", node, err)
 			continue
@@ -388,6 +396,80 @@ func (r *KubernetesReporter) logPods(virtCli kubecli.KubevirtClient) {
 	fmt.Fprintln(f, string(j))
 }
 
+func (r *KubernetesReporter) logServices(virtCli kubecli.KubevirtClient) {
+	f, err := os.OpenFile(filepath.Join(r.artifactsDir, fmt.Sprintf("%d_services.log", r.failureCount)),
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open the file: %v", err)
+		return
+	}
+	defer f.Close()
+
+	services, err := virtCli.CoreV1().Services(v1.NamespaceAll).List(metav1.ListOptions{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to fetch services: %v\n", err)
+		return
+	}
+
+	j, err := json.MarshalIndent(services, "", "    ")
+	if err != nil {
+		log.DefaultLogger().Reason(err).Errorf("Failed to marshal services")
+		return
+	}
+	fmt.Fprintln(f, string(j))
+}
+
+func (r *KubernetesReporter) logAPIServices(virtCli kubecli.KubevirtClient) {
+	f, err := os.OpenFile(filepath.Join(r.artifactsDir, fmt.Sprintf("%d_apiServices.log", r.failureCount)),
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open the file: %v", err)
+		return
+	}
+	defer f.Close()
+
+	result, err := virtCli.RestClient().Get().RequestURI("/apis/apiregistration.k8s.io/v1/").Resource("apiservices").Do().Raw()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to fetch apiServices: %v\n", err)
+		return
+	}
+	apiServices := apiservices.APIServiceList{}
+	err = json.Unmarshal(result, &apiServices)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to unmarshal raw result to apiServicesList: %v\n", err)
+	}
+
+	j, err := json.MarshalIndent(apiServices, "", "    ")
+	if err != nil {
+		log.DefaultLogger().Reason(err).Errorf("Failed to marshal apiServices")
+		return
+	}
+	fmt.Fprintln(f, string(j))
+}
+
+func (r *KubernetesReporter) logEndpoints(virtCli kubecli.KubevirtClient) {
+	f, err := os.OpenFile(filepath.Join(r.artifactsDir, fmt.Sprintf("%d_endpoints.log", r.failureCount)),
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open the file: %v", err)
+		return
+	}
+	defer f.Close()
+
+	endpoints, err := virtCli.CoreV1().Endpoints(v1.NamespaceAll).List(metav1.ListOptions{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to fetch endpointss: %v\n", err)
+		return
+	}
+
+	j, err := json.MarshalIndent(endpoints, "", "    ")
+	if err != nil {
+		log.DefaultLogger().Reason(err).Errorf("Failed to marshal endpoints")
+		return
+	}
+	fmt.Fprintln(f, string(j))
+}
+
 func (r *KubernetesReporter) logConfigMaps(virtCli kubecli.KubevirtClient) {
 	f, err := os.OpenFile(filepath.Join(r.artifactsDir, fmt.Sprintf("%d_configmaps.log", r.failureCount)),
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -397,7 +479,7 @@ func (r *KubernetesReporter) logConfigMaps(virtCli kubecli.KubevirtClient) {
 	}
 	defer f.Close()
 
-	configmaps, err := virtCli.CoreV1().ConfigMaps(tests.KubeVirtInstallNamespace).List(metav1.ListOptions{})
+	configmaps, err := virtCli.CoreV1().ConfigMaps(v1.NamespaceAll).List(metav1.ListOptions{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to fetch configmaps: %v\n", err)
 		return
@@ -420,7 +502,7 @@ func (r *KubernetesReporter) logSecrets(virtCli kubecli.KubevirtClient) {
 	}
 	defer f.Close()
 
-	secrets, err := virtCli.CoreV1().Secrets(tests.KubeVirtInstallNamespace).List(metav1.ListOptions{})
+	secrets, err := virtCli.CoreV1().Secrets(flags.KubeVirtInstallNamespace).List(metav1.ListOptions{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to fetch secrets: %v\n", err)
 		return
@@ -625,26 +707,35 @@ func (r *KubernetesReporter) logSRIOVInfo(virtCli kubecli.KubevirtClient) {
 
 func (r *KubernetesReporter) logSRIOVNodeState(virtCli kubecli.KubevirtClient, outputFolder string) {
 	nodeStateLogPath := filepath.Join(outputFolder, fmt.Sprintf("%d_nodestate.log", r.failureCount))
-	r.dumpK8sEntityToFile(virtCli, sriovNodeStateEntity, v1.NamespaceAll, nodeStateLogPath)
+	r.dumpK8sEntityToFile(virtCli, sriovNodeStateEntity, v1.NamespaceAll, sriovEntityURITemplate, nodeStateLogPath)
 }
 
 func (r *KubernetesReporter) logSRIOVNodeNetworkPolicies(virtCli kubecli.KubevirtClient, outputFolder string) {
 	nodeNetworkPolicyLogPath := filepath.Join(outputFolder, fmt.Sprintf("%d_nodenetworkpolicies.log", r.failureCount))
-	r.dumpK8sEntityToFile(virtCli, sriovNodeNetworkPolicyEntity, v1.NamespaceAll, nodeNetworkPolicyLogPath)
+	r.dumpK8sEntityToFile(virtCli, sriovNodeNetworkPolicyEntity, v1.NamespaceAll, sriovEntityURITemplate, nodeNetworkPolicyLogPath)
 }
 
 func (r *KubernetesReporter) logSRIOVNetworks(virtCli kubecli.KubevirtClient, outputFolder string) {
 	networksPath := filepath.Join(outputFolder, fmt.Sprintf("%d_networks.log", r.failureCount))
-	r.dumpK8sEntityToFile(virtCli, sriovNetworksEntity, v1.NamespaceAll, networksPath)
+	r.dumpK8sEntityToFile(virtCli, sriovNetworksEntity, v1.NamespaceAll, sriovEntityURITemplate, networksPath)
 }
 
 func (r *KubernetesReporter) logSRIOVOperatorConfigs(virtCli kubecli.KubevirtClient, outputFolder string) {
 	operatorConfigPath := filepath.Join(outputFolder, fmt.Sprintf("%d_operatorconfigs.log", r.failureCount))
-	r.dumpK8sEntityToFile(virtCli, sriovOperatorConfigsEntity, v1.NamespaceAll, operatorConfigPath)
+	r.dumpK8sEntityToFile(virtCli, sriovOperatorConfigsEntity, v1.NamespaceAll, sriovEntityURITemplate, operatorConfigPath)
 }
 
-func (r *KubernetesReporter) dumpK8sEntityToFile(virtCli kubecli.KubevirtClient, entityName string, namespace string, outputFilePath string) {
-	requestURI := fmt.Sprintf(sriovEntityURITemplate, namespace, entityName)
+func (r *KubernetesReporter) logNetworkAttachmentDefinitionInfo(virtCli kubecli.KubevirtClient) {
+	r.logNetworkAttachmentDefinition(virtCli, r.artifactsDir)
+}
+
+func (r *KubernetesReporter) logNetworkAttachmentDefinition(virtCli kubecli.KubevirtClient, outputFolder string) {
+	networkAttachmentDefinitionsPath := filepath.Join(outputFolder, fmt.Sprintf("%d_networkAttachmentDefinitions.log", r.failureCount))
+	r.dumpK8sEntityToFile(virtCli, networkAttachmentDefinitionEntity, v1.NamespaceAll, k8sCNICNCFEntityURLTemplate, networkAttachmentDefinitionsPath)
+}
+
+func (r *KubernetesReporter) dumpK8sEntityToFile(virtCli kubecli.KubevirtClient, entityName string, namespace string, entityURITemplate string, outputFilePath string) {
+	requestURI := fmt.Sprintf(entityURITemplate, namespace, entityName)
 	f, err := os.OpenFile(outputFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to open file: %v\n", err)
@@ -668,7 +759,10 @@ func (r *KubernetesReporter) dumpK8sEntityToFile(virtCli kubecli.KubevirtClient,
 }
 
 func (r *KubernetesReporter) AfterSuiteDidRun(setupSummary *types.SetupSummary) {
-
+	if setupSummary.State.IsFailure() {
+		r.failureCount++
+		r.Dump(setupSummary.RunTime)
+	}
 }
 
 func (r *KubernetesReporter) SpecSuiteDidEnd(summary *types.SuiteSummary) {

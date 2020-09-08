@@ -36,6 +36,7 @@ import (
 	v1 "kubevirt.io/client-go/api/v1"
 	"kubevirt.io/client-go/kubecli"
 	"kubevirt.io/kubevirt/tests"
+	cd "kubevirt.io/kubevirt/tests/containerdisk"
 )
 
 var _ = Describe("[rfe_id:588][crit:medium][vendor:cnv-qe@redhat.com][level:component]ContainerDisk", func() {
@@ -106,8 +107,8 @@ var _ = Describe("[rfe_id:588][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 
 	Describe("[rfe_id:273][crit:medium][vendor:cnv-qe@redhat.com][level:component]Starting and stopping the same VirtualMachineInstance", func() {
 		Context("with ephemeral registry disk", func() {
-			It("[test_id:1463]should success multiple times", func() {
-				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
+			It("[test_id:1463][Conformance] should success multiple times", func() {
+				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
 				num := 2
 				for i := 0; i < num; i++ {
 					By("Starting the VirtualMachineInstance")
@@ -128,7 +129,7 @@ var _ = Describe("[rfe_id:588][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 	Describe("[rfe_id:273][crit:medium][vendor:cnv-qe@redhat.com][level:component]Starting a VirtualMachineInstance", func() {
 		Context("with ephemeral registry disk", func() {
 			It("[test_id:1464]should not modify the spec on status update", func() {
-				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
+				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
 				v1.SetObjectDefaults_VirtualMachineInstance(vmi)
 
 				By("Starting the VirtualMachineInstance")
@@ -150,7 +151,7 @@ var _ = Describe("[rfe_id:588][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 				vmis := make([]*v1.VirtualMachineInstance, 0, num)
 				objs := make([]runtime.Object, 0, num)
 				for i := 0; i < num; i++ {
-					vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
+					vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "#!/bin/bash\necho 'hello'\n")
 					// FIXME if we give too much ram, the vmis really boot and eat all our memory (cache?)
 					vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceMemory] = resource.MustParse("1M")
 					obj := LaunchVMI(vmi)
@@ -175,7 +176,7 @@ var _ = Describe("[rfe_id:588][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 	Describe("[rfe_id:273][crit:medium][vendor:cnv-qe@redhat.com][level:component]Starting from custom image location", func() {
 		Context("with disk at /custom-disk/downloaded", func() {
 			It("[test_id:1466]should boot normally", func() {
-				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirrosCustomLocation), "#!/bin/bash\necho 'hello'\n")
+				vmi := tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirrosCustomLocation), "#!/bin/bash\necho 'hello'\n")
 				for ind, volume := range vmi.Spec.Volumes {
 					if volume.ContainerDisk != nil {
 						vmi.Spec.Volumes[ind].ContainerDisk.Path = "/custom-disk/downloaded"
@@ -193,8 +194,8 @@ var _ = Describe("[rfe_id:588][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 	Describe("[rfe_id:273][crit:medium][vendor:cnv-qe@redhat.com][level:component]Starting with virtio-win", func() {
 		Context("with virtio-win as secondary disk", func() {
 			It("[test_id:1467]should boot and have the virtio as sata CDROM", func() {
-				vmi := tests.NewRandomVMIWithEphemeralDisk(tests.ContainerDiskFor(tests.ContainerDiskAlpine))
-				tests.AddEphemeralCdrom(vmi, "disk4", "sata", tests.ContainerDiskFor(tests.ContainerDiskVirtio))
+				vmi := tests.NewRandomVMIWithEphemeralDisk(cd.ContainerDiskFor(cd.ContainerDiskAlpine))
+				tests.AddEphemeralCdrom(vmi, "disk4", "sata", cd.ContainerDiskFor(cd.ContainerDiskVirtio))
 
 				By("Starting the VirtualMachineInstance")
 				obj, err := virtClient.RestClient().Post().Resource("virtualmachineinstances").Namespace(tests.NamespaceTestDefault).Body(vmi).Do().Get()
@@ -210,11 +211,11 @@ var _ = Describe("[rfe_id:588][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 					// mount virtio cdrom and check files are there
 					&expect.BSnd{S: "mount -t iso9600 /dev/cdrom\n"},
 					&expect.BSnd{S: "echo $?\n"},
-					&expect.BExp{R: "0"},
+					&expect.BExp{R: tests.RetValue("0")},
 					&expect.BSnd{S: "cd /media/cdrom\n"},
 					&expect.BSnd{S: "ls virtio-win_license.txt guest-agent\n"},
 					&expect.BSnd{S: "echo $?\n"},
-					&expect.BExp{R: "0"},
+					&expect.BExp{R: tests.RetValue("0")},
 				}, 200*time.Second)
 				Expect(err).ToNot(HaveOccurred(), "expected virtio files to be mounted properly")
 			})
@@ -224,7 +225,7 @@ var _ = Describe("[rfe_id:588][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 	Describe("[rfe_id:4052][crit:high][vendor:cnv-qe@redhat.com][level:component]VMI disk permissions", func() {
 		Context("with ephemeral registry disk", func() {
 			It("[test_id:4299]should not have world write permissions", func() {
-				vmi := tests.NewRandomVMIWithEphemeralDisk(tests.ContainerDiskFor(tests.ContainerDiskAlpine))
+				vmi := tests.NewRandomVMIWithEphemeralDisk(cd.ContainerDiskFor(cd.ContainerDiskAlpine))
 
 				By("Starting a New VMI")
 				vmi, err = virtClient.VirtualMachineInstance(tests.NamespaceTestDefault).Create(vmi)
@@ -248,7 +249,7 @@ var _ = Describe("[rfe_id:588][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 				Expect(err).ToNot(HaveOccurred())
 
 				By("Checking the writable Image Octal mode")
-				Expect(strings.Trim(writableImageOctalMode, "\n")).To(Equal("644"), "Octal Mode of writable Image should be 644")
+				Expect(strings.Trim(writableImageOctalMode, "\n")).To(Equal("640"), "Octal Mode of writable Image should be 640")
 
 				readonlyImageOctalMode, err := tests.ExecuteCommandOnPod(
 					virtClient,
@@ -259,7 +260,7 @@ var _ = Describe("[rfe_id:588][crit:medium][vendor:cnv-qe@redhat.com][level:comp
 				Expect(err).ToNot(HaveOccurred())
 
 				By("Checking the read-only Image Octal mode")
-				Expect(strings.Trim(readonlyImageOctalMode, "\n")).To(Equal("555"), "Octal Mode of read-only Image should be 555")
+				Expect(strings.Trim(readonlyImageOctalMode, "\n")).To(Equal("444"), "Octal Mode of read-only Image should be 444")
 			})
 		})
 	})

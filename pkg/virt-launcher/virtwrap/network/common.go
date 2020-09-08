@@ -29,21 +29,27 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
+	"syscall"
 
 	"github.com/coreos/go-iptables/iptables"
-
+	"github.com/opencontainers/selinux/go-selinux"
 	lmf "github.com/subgraph/libmacouflage"
 	"github.com/vishvananda/netlink"
+
+	netutils "k8s.io/utils/net"
 
 	v1 "kubevirt.io/client-go/api/v1"
 	"kubevirt.io/client-go/log"
 	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/api"
 	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/network/dhcp"
-
-	netutils "k8s.io/utils/net"
 )
 
-const randomMacGenerationAttempts = 10
+const (
+	randomMacGenerationAttempts = 10
+	qemuUID                     = "107"
+	qemuGID                     = "107"
+)
 
 type VIF struct {
 	Name         string
@@ -55,17 +61,18 @@ type VIF struct {
 	Routes       *[]netlink.Route
 	Mtu          uint16
 	IPAMDisabled bool
+	TapDevice    string
 }
 
 type CriticalNetworkError struct {
-	msg string
+	Msg string
 }
 
-func (e *CriticalNetworkError) Error() string { return e.msg }
+func (e *CriticalNetworkError) Error() string { return e.Msg }
 
 func (vif VIF) String() string {
 	return fmt.Sprintf(
-		"VIF: { Name: %s, IP: %s, Mask: %s, MAC: %s, Gateway: %s, MTU: %d, IPAMDisabled: %t}",
+		"VIF: { Name: %s, IP: %s, Mask: %s, MAC: %s, Gateway: %s, MTU: %d, IPAMDisabled: %t, TapDevice: %s}",
 		vif.Name,
 		vif.IP.IP,
 		vif.IP.Mask,
@@ -73,6 +80,7 @@ func (vif VIF) String() string {
 		vif.Gateway,
 		vif.Mtu,
 		vif.IPAMDisabled,
+		vif.TapDevice,
 	)
 }
 
@@ -94,7 +102,8 @@ type NetworkHandler interface {
 	LinkSetMaster(link netlink.Link, master *netlink.Bridge) error
 	StartDHCP(nic *VIF, serverAddr *netlink.Addr, bridgeInterfaceName string, dhcpOptions *v1.DHCPOptions) error
 	HasNatIptables(proto iptables.Protocol) bool
-	IsIpv6Enabled() bool
+	IsIpv6Enabled(interfaceName string) (bool, error)
+	IsIpv4Primary() (bool, error)
 	ConfigureIpv6Forwarding() error
 	IptablesNewChain(proto iptables.Protocol, table, chain string) error
 	IptablesAppendRule(proto iptables.Protocol, table, chain string, rulespec ...string) error
@@ -102,9 +111,19 @@ type NetworkHandler interface {
 	NftablesAppendRule(proto iptables.Protocol, table, chain string, rulespec ...string) error
 	NftablesLoad(fnName string) error
 	GetNFTIPString(proto iptables.Protocol) string
+	CreateTapDevice(tapName string, isMultiqueue bool, launcherPID int) error
+	BindTapDeviceToBridge(tapName string, bridgeName string) error
 }
 
 type NetworkUtilsHandler struct{}
+
+type tapDeviceMaker struct {
+	tapName                  string
+	isMultiqueue             bool
+	virtLauncherSELinuxLabel string
+	virtHandlerSELinuxLabel  string
+	tapMakingCmd             *exec.Cmd
+}
 
 var Handler NetworkHandler
 
@@ -162,13 +181,28 @@ func (h *NetworkUtilsHandler) ConfigureIpv6Forwarding() error {
 	return err
 }
 
-func (h *NetworkUtilsHandler) IsIpv6Enabled() bool {
-	podIp := os.Getenv("MY_POD_IP")
-	if !netutils.IsIPv6String(podIp) {
-		log.Log.V(5).Info("Since the pod ip is non IPv6, IPv6 is disabled")
-		return false
+func (h *NetworkUtilsHandler) IsIpv6Enabled(interfaceName string) (bool, error) {
+	link, err := Handler.LinkByName(interfaceName)
+	addrList, err := Handler.AddrList(link, netlink.FAMILY_V6)
+	if err != nil {
+		return false, err
 	}
-	return true
+
+	for _, addr := range addrList {
+		if addr.IP.IsGlobalUnicast() {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (h *NetworkUtilsHandler) IsIpv4Primary() (bool, error) {
+	podIP, exist := os.LookupEnv("MY_POD_IP")
+	if !exist {
+		return false, fmt.Errorf("MY_POD_IP doesnt exists")
+	}
+
+	return !netutils.IsIPv6String(podIP), nil
 }
 
 func (h *NetworkUtilsHandler) IptablesNewChain(proto iptables.Protocol, table, chain string) error {
@@ -339,6 +373,104 @@ func (h *NetworkUtilsHandler) GenerateRandomMac() (net.HardwareAddr, error) {
 		return nil, err
 	}
 	return net.HardwareAddr(append(prefix, suffix...)), nil
+}
+
+func (h *NetworkUtilsHandler) CreateTapDevice(tapName string, isMultiqueue bool, launcherPID int) error {
+	tapDeviceMaker, err := buildTapDeviceMaker(tapName, isMultiqueue, launcherPID)
+	if err != nil {
+		return fmt.Errorf("error creating tap device named %s; %v", tapName, err)
+	}
+
+	if err := tapDeviceMaker.makeTapDevice(); err != nil {
+		return fmt.Errorf("error creating tap device named %s; %v", tapName, err)
+	}
+
+	log.Log.Infof("Created tap device: %s in PID: %d using selinux label: %s", tapName, launcherPID, tapDeviceMaker.virtLauncherSELinuxLabel)
+	return nil
+}
+
+func buildTapDeviceMaker(tapName string, isMultiqueue bool, virtLauncherPID int) (*tapDeviceMaker, error) {
+	virtHandlerSELinuxLabel := "system_u:system_r:spc_t:s0"
+	virtLauncherSELinuxLabel, err := getProcessCurrentSELinuxLabel(virtLauncherPID)
+	if err != nil {
+		return nil, fmt.Errorf("error reading virt-launcher %d selinux label", virtLauncherPID)
+	}
+
+	createTapDeviceArgs := []string{
+		"create-tap",
+		"--tap-name", tapName,
+		"--uid", qemuUID,
+		"--gid", qemuGID,
+	}
+	if isMultiqueue {
+		createTapDeviceArgs = append(createTapDeviceArgs, "--multiqueue")
+	}
+	cmd := exec.Command("virt-chroot", createTapDeviceArgs...)
+	return &tapDeviceMaker{
+		virtLauncherSELinuxLabel: virtLauncherSELinuxLabel,
+		virtHandlerSELinuxLabel:  virtHandlerSELinuxLabel,
+		tapMakingCmd:             cmd,
+		tapName:                  tapName,
+		isMultiqueue:             isMultiqueue,
+	}, nil
+}
+
+func (tmc *tapDeviceMaker) makeTapDevice() error {
+	runtime.LockOSThread()
+	defer func() {
+		_ = selinux.SetExecLabel(tmc.virtHandlerSELinuxLabel)
+		runtime.UnlockOSThread()
+	}()
+
+	if err := selinux.SetExecLabel(tmc.virtLauncherSELinuxLabel); err != nil {
+		return fmt.Errorf("failed to switch selinux context to %s. Reason: %v", tmc.virtLauncherSELinuxLabel, err)
+	}
+
+	preventFDLeakOntoChild()
+	if err := tmc.tapMakingCmd.Run(); err != nil {
+		return fmt.Errorf("failed to create tap device %s: %v", tmc.tapName, err)
+	}
+	return nil
+}
+
+func getProcessCurrentSELinuxLabel(pid int) (string, error) {
+	launcherSELinuxLabel, err := selinux.FileLabel(fmt.Sprintf("/proc/%d/attr/current", pid))
+	if err != nil {
+		return "", fmt.Errorf("could not retrieve pid %d selinux label: %v", pid, err)
+	}
+	return launcherSELinuxLabel, nil
+}
+
+func preventFDLeakOntoChild() {
+	// we want to share the parent process std{in|out|err}
+	for fd := 3; fd < 256; fd++ {
+		syscall.CloseOnExec(fd)
+	}
+}
+
+func (h *NetworkUtilsHandler) BindTapDeviceToBridge(tapName string, bridgeName string) error {
+	tap, err := netlink.LinkByName(tapName)
+	log.Log.V(4).Infof("Looking for tap device: %s", tapName)
+	if err != nil {
+		return fmt.Errorf("could not find tap device %s; %v", tapName, err)
+	}
+
+	bridge := &netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{
+			Name: bridgeName,
+		},
+	}
+	if err := netlink.LinkSetMaster(tap, bridge); err != nil {
+		return fmt.Errorf("failed to bind tap device %s to bridge %s; %v", tapName, bridgeName, err)
+	}
+
+	err = netlink.LinkSetUp(tap)
+	if err != nil {
+		return fmt.Errorf("failed to set tap device %s up; %v", tapName, err)
+	}
+
+	log.Log.Infof("Successfully configured tap device: %s", tapName)
+	return nil
 }
 
 // Allow mocking for tests

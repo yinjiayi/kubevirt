@@ -41,6 +41,26 @@ var _ = Describe("Converter", func() {
 
 	TestSmbios := &cmdv1.SMBios{}
 
+	Context("with timezone", func() {
+		It("Should set timezone attribute", func() {
+			timezone := v1.ClockOffsetTimezone("America/New_York")
+			clock := &v1.Clock{
+				ClockOffset: v1.ClockOffset{
+					Timezone: &timezone,
+				},
+				Timer: &v1.Timer{},
+			}
+
+			var convertClock Clock
+			Convert_v1_Clock_To_api_Clock(clock, &convertClock, &ConverterContext{})
+			data, err := xml.MarshalIndent(convertClock, "", "  ")
+			Expect(err).ToNot(HaveOccurred())
+
+			expectedClock := `<Clock offset="timezone" timezone="America/New_York"></Clock>`
+			Expect(string(data)).To(Equal(expectedClock))
+		})
+	})
+
 	Context("with v1.Disk", func() {
 		It("Should add boot order when provided", func() {
 			order := uint(1)
@@ -62,6 +82,32 @@ var _ = Describe("Converter", func() {
 </Disk>`
 			xml := diskToDiskXML(kubevirtDisk)
 			Expect(xml).To(Equal(convertedDisk))
+		})
+
+		It("should set disk I/O mode if requested", func() {
+			v1Disk := &v1.Disk{
+				IO: "native",
+			}
+			xml := diskToDiskXML(v1Disk)
+			expectedXML := `<Disk device="" type="">
+  <source></source>
+  <target></target>
+  <driver io="native" name="qemu" type=""></driver>
+  <alias name="ua-"></alias>
+</Disk>`
+			Expect(xml).To(Equal(expectedXML))
+		})
+
+		It("should not set disk I/O mode if not requested", func() {
+			v1Disk := &v1.Disk{}
+			xml := diskToDiskXML(v1Disk)
+			expectedXML := `<Disk device="" type="">
+  <source></source>
+  <target></target>
+  <driver name="qemu" type=""></driver>
+  <alias name="ua-"></alias>
+</Disk>`
+			Expect(xml).To(Equal(expectedXML))
 		})
 
 		It("Should omit boot order when not provided", func() {
@@ -384,7 +430,7 @@ var _ = Describe("Converter", func() {
 
 		var convertedDomain = fmt.Sprintf(`<domain type="%s" xmlns:qemu="http://libvirt.org/schemas/domain/qemu/1.0">
   <name>mynamespace_testvmi</name>
-  <memory unit="B">8388608</memory>
+  <memory unit="b">8388608</memory>
   <os>
     <type arch="x86_64" machine="q35">hvm</type>
     <smbios mode="sysinfo"></smbios>
@@ -404,8 +450,8 @@ var _ = Describe("Converter", func() {
     <chassis></chassis>
   </sysinfo>
   <devices>
-    <interface type="bridge">
-      <source bridge="k6t-eth0"></source>
+    <interface type="ethernet">
+      <source></source>
       <model type="virtio"></model>
       <alias name="ua-default"></alias>
     </interface>
@@ -420,7 +466,7 @@ var _ = Describe("Converter", func() {
     <graphics type="vnc">
       <listen type="socket" socket="/var/run/kubevirt-private/f4686d2c-6e8d-4335-b8fd-81bee22f4814/virt-vnc"></listen>
     </graphics>
-    <memballoon model="none"></memballoon>
+    %s
     <disk device="disk" type="file">
       <source file="/var/run/kubevirt-private/vmi-disks/myvolume/disk.img"></source>
       <target bus="virtio" dev="vda"></target>
@@ -565,11 +611,23 @@ var _ = Describe("Converter", func() {
   </cpu>
   <vcpu placement="static">1</vcpu>
   <iothreads>3</iothreads>
-</domain>`, domainType)
+</domain>`, domainType, "%s")
+		var convertedDomainWith5Period = fmt.Sprintf(convertedDomain,
+			`<memballoon model="virtio">
+      <stats period="5"></stats>
+    </memballoon>`)
+		var convertedDomainWith0Period = fmt.Sprintf(convertedDomain,
+			`<memballoon model="virtio"></memballoon>`)
+		var convertedDomainWithFalseAutoattach = fmt.Sprintf(convertedDomain,
+			`<memballoon model="none"></memballoon>`)
+		convertedDomain = fmt.Sprintf(convertedDomain,
+			`<memballoon model="virtio">
+      <stats period="10"></stats>
+    </memballoon>`)
 
 		var convertedDomainppc64le = fmt.Sprintf(`<domain type="%s" xmlns:qemu="http://libvirt.org/schemas/domain/qemu/1.0">
   <name>mynamespace_testvmi</name>
-  <memory unit="B">8388608</memory>
+  <memory unit="b">8388608</memory>
   <os>
     <type arch="ppc64le" machine="pseries">hvm</type>
   </os>
@@ -588,8 +646,8 @@ var _ = Describe("Converter", func() {
     <chassis></chassis>
   </sysinfo>
   <devices>
-    <interface type="bridge">
-      <source bridge="k6t-eth0"></source>
+    <interface type="ethernet">
+      <source></source>
       <model type="virtio"></model>
       <alias name="ua-default"></alias>
     </interface>
@@ -604,7 +662,7 @@ var _ = Describe("Converter", func() {
     <graphics type="vnc">
       <listen type="socket" socket="/var/run/kubevirt-private/f4686d2c-6e8d-4335-b8fd-81bee22f4814/virt-vnc"></listen>
     </graphics>
-    <memballoon model="none"></memballoon>
+    %s
     <disk device="disk" type="file">
       <source file="/var/run/kubevirt-private/vmi-disks/myvolume/disk.img"></source>
       <target bus="virtio" dev="vda"></target>
@@ -749,7 +807,21 @@ var _ = Describe("Converter", func() {
   </cpu>
   <vcpu placement="static">1</vcpu>
   <iothreads>3</iothreads>
-</domain>`, domainType)
+</domain>`, domainType, "%s")
+
+		var convertedDomainppc64leWith5Period = fmt.Sprintf(convertedDomainppc64le,
+			`<memballoon model="virtio">
+      <stats period="5"></stats>
+    </memballoon>`)
+		var convertedDomainppc64leWith0Period = fmt.Sprintf(convertedDomainppc64le,
+			`<memballoon model="virtio"></memballoon>`)
+
+		var convertedDomainppc64leWithFalseAutoattach = fmt.Sprintf(convertedDomainppc64le,
+			`<memballoon model="none"></memballoon>`)
+		convertedDomainppc64le = fmt.Sprintf(convertedDomainppc64le,
+			`<memballoon model="virtio">
+      <stats period="10"></stats>
+    </memballoon>`)
 
 		var convertedDomainaarch64 = fmt.Sprintf(`<domain type="%s" xmlns:qemu="http://libvirt.org/schemas/domain/qemu/1.0">
   <name>mynamespace_testvmi</name>
@@ -938,7 +1010,7 @@ var _ = Describe("Converter", func() {
 
 		var convertedDomainWithDevicesOnRootBus = fmt.Sprintf(`<domain type="%s" xmlns:qemu="http://libvirt.org/schemas/domain/qemu/1.0">
   <name>mynamespace_testvmi</name>
-  <memory unit="B">8388608</memory>
+  <memory unit="b">8388608</memory>
   <os>
     <type arch="x86_64" machine="q35">hvm</type>
     <smbios mode="sysinfo"></smbios>
@@ -958,9 +1030,9 @@ var _ = Describe("Converter", func() {
     <chassis></chassis>
   </sysinfo>
   <devices>
-    <interface type="bridge">
+    <interface type="ethernet">
       <address type="pci" domain="0x0000" bus="0x00" slot="0x02" function="0x0"></address>
-      <source bridge="k6t-eth0"></source>
+      <source></source>
       <model type="virtio"></model>
       <alias name="ua-default"></alias>
     </interface>
@@ -979,7 +1051,10 @@ var _ = Describe("Converter", func() {
     <graphics type="vnc">
       <listen type="socket" socket="/var/run/kubevirt-private/f4686d2c-6e8d-4335-b8fd-81bee22f4814/virt-vnc"></listen>
     </graphics>
-    <memballoon model="none"></memballoon>
+    <memballoon model="virtio">
+      <stats period="10"></stats>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x0a" function="0x0"></address>
+    </memballoon>
     <disk device="disk" type="file">
       <source file="/var/run/kubevirt-private/vmi-disks/myvolume/disk.img"></source>
       <target bus="virtio" dev="vda"></target>
@@ -1147,12 +1222,13 @@ var _ = Describe("Converter", func() {
 						},
 					},
 				},
-				UseEmulation: true,
-				IsBlockPVC:   isBlockPVCMap,
-				IsBlockDV:    isBlockDVMap,
-				SRIOVDevices: map[string][]string{},
-				SMBios:       TestSmbios,
-				GpuDevices:   []string{},
+				UseEmulation:          true,
+				IsBlockPVC:            isBlockPVCMap,
+				IsBlockDV:             isBlockDVMap,
+				SRIOVDevices:          map[string][]string{},
+				SMBios:                TestSmbios,
+				GpuDevices:            []string{},
+				MemBalloonStatsPeriod: 10,
 			}
 		})
 
@@ -1165,6 +1241,30 @@ var _ = Describe("Converter", func() {
 			table.Entry("for amd64", "amd64", convertedDomain),
 			table.Entry("for ppc64le", "ppc64le", convertedDomainppc64le),
 			table.Entry("for aarch64", "aarch64", convertedDomainaarch64),
+		)
+
+		table.DescribeTable("should be converted to a libvirt Domain", func(arch string, domain string, period uint) {
+			v1.SetObjectDefaults_VirtualMachineInstance(vmi)
+			vmi.Spec.Domain.Devices.Rng = &v1.Rng{}
+			c.Architecture = arch
+			c.MemBalloonStatsPeriod = period
+			Expect(vmiToDomainXML(vmi, c)).To(Equal(domain))
+		},
+			table.Entry("when context define 5 period on memballoon device for amd64", "amd64", convertedDomainWith5Period, uint(5)),
+			table.Entry("when context define 5 period on memballoon device for ppc64le", "ppc64le", convertedDomainppc64leWith5Period, uint(5)),
+			table.Entry("when context define 0 period on memballoon device for amd64 ", "amd64", convertedDomainWith0Period, uint(0)),
+			table.Entry("when context define 0 period on memballoon device for ppc64le", "ppc64le", convertedDomainppc64leWith0Period, uint(0)),
+		)
+
+		table.DescribeTable("should be converted to a libvirt Domain", func(arch string, domain string) {
+			v1.SetObjectDefaults_VirtualMachineInstance(vmi)
+			vmi.Spec.Domain.Devices.Rng = &v1.Rng{}
+			vmi.Spec.Domain.Devices.AutoattachMemBalloon = &_false
+			c.Architecture = arch
+			Expect(vmiToDomainXML(vmi, c)).To(Equal(domain))
+		},
+			table.Entry("when Autoattach memballoon device is false for amd64", "amd64", convertedDomainWithFalseAutoattach),
+			table.Entry("when Autoattach memballoon device is false for ppc64le", "ppc64le", convertedDomainppc64leWithFalseAutoattach),
 		)
 
 		It("should use kvm if present", func() {
@@ -1458,7 +1558,7 @@ var _ = Describe("Converter", func() {
 			m64, _ := resource.ParseQuantity("64M")
 			memory, err := QuantityToByte(m64)
 			Expect(memory.Value).To(Equal(uint64(64000000)))
-			Expect(memory.Unit).To(Equal("B"))
+			Expect(memory.Unit).To(Equal("b"))
 			Expect(err).ToNot(HaveOccurred())
 
 			By("specifying memory 64Mi")
@@ -1506,7 +1606,7 @@ var _ = Describe("Converter", func() {
 			Expect(domainSpec.MemoryBacking.HugePages).ToNot(BeNil())
 
 			Expect(domainSpec.Memory.Value).To(Equal(uint64(8388608)))
-			Expect(domainSpec.Memory.Unit).To(Equal("B"))
+			Expect(domainSpec.Memory.Unit).To(Equal("b"))
 		})
 
 		It("should use guest memory instead of requested memory if present", func() {
@@ -1519,7 +1619,7 @@ var _ = Describe("Converter", func() {
 			domainSpec := vmiToDomainXMLToDomainSpec(vmi, c)
 
 			Expect(domainSpec.Memory.Value).To(Equal(uint64(128974848)))
-			Expect(domainSpec.Memory.Unit).To(Equal("B"))
+			Expect(domainSpec.Memory.Unit).To(Equal("b"))
 		})
 
 		It("should not add RNG when not present", func() {
@@ -1649,7 +1749,7 @@ var _ = Describe("Converter", func() {
 			Expect(domain).ToNot(Equal(nil))
 			Expect(len(domain.Spec.QEMUCmd.QEMUArg)).To(Equal(2))
 			Expect(len(domain.Spec.Devices.Interfaces)).To(Equal(2))
-			Expect(domain.Spec.Devices.Interfaces[0].Type).To(Equal("bridge"))
+			Expect(domain.Spec.Devices.Interfaces[0].Type).To(Equal("ethernet"))
 			Expect(domain.Spec.Devices.Interfaces[0].Model.Type).To(Equal("virtio"))
 			Expect(domain.Spec.Devices.Interfaces[1].Type).To(Equal("user"))
 			Expect(domain.Spec.Devices.Interfaces[1].Model.Type).To(Equal("e1000"))
@@ -1688,9 +1788,9 @@ var _ = Describe("Converter", func() {
 			domain := vmiToDomain(vmi, c)
 			Expect(domain).ToNot(Equal(nil))
 			Expect(domain.Spec.Devices.Interfaces).To(HaveLen(3))
-			Expect(domain.Spec.Devices.Interfaces[0].Source.Bridge).To(Equal("k6t-net1"))
-			Expect(domain.Spec.Devices.Interfaces[1].Source.Bridge).To(Equal("k6t-net2"))
-			Expect(domain.Spec.Devices.Interfaces[2].Source.Bridge).To(Equal("k6t-eth0"))
+			Expect(domain.Spec.Devices.Interfaces[0].Type).To(Equal("ethernet"))
+			Expect(domain.Spec.Devices.Interfaces[1].Type).To(Equal("ethernet"))
+			Expect(domain.Spec.Devices.Interfaces[2].Type).To(Equal("ethernet"))
 		})
 		It("Should set domain interface source correctly for default multus", func() {
 			v1.SetObjectDefaults_VirtualMachineInstance(vmi)
@@ -1718,8 +1818,8 @@ var _ = Describe("Converter", func() {
 			domain := vmiToDomain(vmi, c)
 			Expect(domain).ToNot(Equal(nil))
 			Expect(domain.Spec.Devices.Interfaces).To(HaveLen(2))
-			Expect(domain.Spec.Devices.Interfaces[0].Source.Bridge).To(Equal("k6t-eth0"))
-			Expect(domain.Spec.Devices.Interfaces[1].Source.Bridge).To(Equal("k6t-net1"))
+			Expect(domain.Spec.Devices.Interfaces[0].Type).To(Equal("ethernet"))
+			Expect(domain.Spec.Devices.Interfaces[1].Type).To(Equal("ethernet"))
 		})
 		It("should allow setting boot order", func() {
 			v1.SetObjectDefaults_VirtualMachineInstance(vmi)
@@ -1759,7 +1859,7 @@ var _ = Describe("Converter", func() {
 			domain := vmiToDomain(vmi, c)
 			Expect(domain).ToNot(Equal(nil))
 			Expect(domain.Spec.Devices.Interfaces).To(HaveLen(1))
-			Expect(domain.Spec.Devices.Interfaces[0].Source.Bridge).To(Equal("k6t-eth0"))
+			Expect(domain.Spec.Devices.Interfaces[0].Type).To(Equal("ethernet"))
 		})
 		It("Should create network configuration for masquerade interface and the pod network and a secondary network using multus", func() {
 			v1.SetObjectDefaults_VirtualMachineInstance(vmi)
@@ -1784,8 +1884,8 @@ var _ = Describe("Converter", func() {
 			domain := vmiToDomain(vmi, c)
 			Expect(domain).ToNot(Equal(nil))
 			Expect(domain.Spec.Devices.Interfaces).To(HaveLen(2))
-			Expect(domain.Spec.Devices.Interfaces[0].Source.Bridge).To(Equal("k6t-eth0"))
-			Expect(domain.Spec.Devices.Interfaces[1].Source.Bridge).To(Equal("k6t-net1"))
+			Expect(domain.Spec.Devices.Interfaces[0].Type).To(Equal("ethernet"))
+			Expect(domain.Spec.Devices.Interfaces[1].Type).To(Equal("ethernet"))
 		})
 	})
 

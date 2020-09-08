@@ -43,6 +43,8 @@ import (
 	"kubevirt.io/client-go/log"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
 	"kubevirt.io/kubevirt/tests"
+	cd "kubevirt.io/kubevirt/tests/containerdisk"
+	"kubevirt.io/kubevirt/tests/flags"
 )
 
 const (
@@ -72,7 +74,7 @@ var _ = Describe("Storage", func() {
 				_pvName = "test-nfs" + rand.String(48)
 				// Prepare a NFS backed PV
 				By("Starting an NFS POD")
-				os := string(tests.ContainerDiskAlpine)
+				os := string(cd.ContainerDiskAlpine)
 				nfsIP := tests.CreateNFSTargetPOD(os)
 				// create a new PV and PVC (PVs can't be reused)
 				By("create a new NFS PV and PVC")
@@ -126,7 +128,7 @@ var _ = Describe("Storage", func() {
 			},
 				table.Entry("[test_id:3130]with Disk PVC", tests.NewRandomVMIWithPVC, ""),
 				table.Entry("[test_id:3131]with CDRom PVC", tests.NewRandomVMIWithCDRom, ""),
-				table.Entry("with NFS Disk PVC", tests.NewRandomVMIWithPVC, "nfs"),
+				table.Entry("[test_id:4618]with NFS Disk PVC", tests.NewRandomVMIWithPVC, "nfs"),
 			)
 
 			table.DescribeTable("should be successfully started and stopped multiple times", func(newVMI VMICreationFunc) {
@@ -163,7 +165,7 @@ var _ = Describe("Storage", func() {
 			It("[test_id:3134]should create a writeable emptyDisk with the right capacity", func() {
 
 				// Start the VirtualMachineInstance with the empty disk attached
-				vmi = tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "echo hi!")
+				vmi = tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "echo hi!")
 				vmi.Spec.Domain.Devices.Disks = append(vmi.Spec.Domain.Devices.Disks, v1.Disk{
 					Name: "emptydisk1",
 					DiskDevice: v1.DiskDevice{
@@ -180,7 +182,7 @@ var _ = Describe("Storage", func() {
 						},
 					},
 				})
-				tests.RunVMIAndExpectLaunch(vmi, 90)
+				vmi = tests.RunVMIAndExpectLaunch(vmi, 90)
 
 				expecter, err := tests.LoggedInCirrosExpecter(vmi)
 				Expect(err).ToNot(HaveOccurred())
@@ -199,7 +201,7 @@ var _ = Describe("Storage", func() {
 					&expect.BSnd{S: "sudo mkfs.ext4 /dev/vdc\n"},
 					&expect.BExp{R: "\\$ "},
 					&expect.BSnd{S: "echo $?\n"},
-					&expect.BExp{R: "0"},
+					&expect.BExp{R: tests.RetValue("0")},
 				}, 20*time.Second)
 				log.DefaultLogger().Object(vmi).Infof("%v", res)
 				Expect(err).ToNot(HaveOccurred())
@@ -212,7 +214,7 @@ var _ = Describe("Storage", func() {
 			It("[test_id:3135]should create a writeable emptyDisk with the specified serial number", func() {
 
 				// Start the VirtualMachineInstance with the empty disk attached
-				vmi = tests.NewRandomVMIWithEphemeralDiskAndUserdata(tests.ContainerDiskFor(tests.ContainerDiskCirros), "echo hi!")
+				vmi = tests.NewRandomVMIWithEphemeralDiskAndUserdata(cd.ContainerDiskFor(cd.ContainerDiskCirros), "echo hi!")
 				vmi.Spec.Domain.Devices.Disks = append(vmi.Spec.Domain.Devices.Disks, v1.Disk{
 					Name:   "emptydisk1",
 					Serial: diskSerial,
@@ -230,7 +232,7 @@ var _ = Describe("Storage", func() {
 						},
 					},
 				})
-				tests.RunVMIAndExpectLaunch(vmi, 90)
+				vmi = tests.RunVMIAndExpectLaunch(vmi, 90)
 
 				expecter, err := tests.LoggedInCirrosExpecter(vmi)
 				Expect(err).ToNot(HaveOccurred())
@@ -266,7 +268,7 @@ var _ = Describe("Storage", func() {
 					pvName = tests.DiskAlpineHostPath
 				}
 				vmi = newVMI(pvName)
-				tests.RunVMIAndExpectLaunchWithIgnoreWarningArg(vmi, 120, ignoreWarnings)
+				vmi = tests.RunVMIAndExpectLaunchWithIgnoreWarningArg(vmi, 120, ignoreWarnings)
 
 				By("Checking that the VirtualMachineInstance console has expected output")
 				expecter, err := tests.LoggedInAlpineExpecter(vmi)
@@ -274,7 +276,7 @@ var _ = Describe("Storage", func() {
 				expecter.Close()
 			},
 				table.Entry("[test_id:3136]with Ephemeral PVC", tests.NewRandomVMIWithEphemeralPVC, ""),
-				table.Entry("with Ephemeral PVC from NFS", tests.NewRandomVMIWithEphemeralPVC, "nfs"),
+				table.Entry("[test_id:4619]with Ephemeral PVC from NFS", tests.NewRandomVMIWithEphemeralPVC, "nfs"),
 			)
 
 			// Not a candidate for testing on NFS because the VMI is restarted and NFS PVC can't be re-used
@@ -300,7 +302,7 @@ var _ = Describe("Storage", func() {
 					// Because "/" is mounted on tmpfs, we need something that normally persists writes - /dev/sda2 is the EFI partition formatted as vFAT.
 					&expect.BSnd{S: "mount /dev/sda2 /mnt\n"},
 					&expect.BSnd{S: "echo $?\n"},
-					&expect.BExp{R: "0"},
+					&expect.BExp{R: tests.RetValue("0")},
 					&expect.BSnd{S: "echo content > /mnt/checkpoint\n"},
 					// The QEMU process will be killed, therefore the write must be flushed to the disk.
 					&expect.BSnd{S: "sync\n"},
@@ -328,10 +330,10 @@ var _ = Describe("Storage", func() {
 					// Same story as when first starting the VirtualMachineInstance - the checkpoint, if persisted, is located at /dev/sda2.
 					&expect.BSnd{S: "mount /dev/sda2 /mnt\n"},
 					&expect.BSnd{S: "echo $?\n"},
-					&expect.BExp{R: "0"},
+					&expect.BExp{R: tests.RetValue("0")},
 					&expect.BSnd{S: "cat /mnt/checkpoint &> /dev/null\n"},
 					&expect.BSnd{S: "echo $?\n"},
-					&expect.BExp{R: "1"},
+					&expect.BExp{R: tests.RetValue("1")},
 				}, 200*time.Second)
 				Expect(err).ToNot(HaveOccurred())
 			})
@@ -390,7 +392,7 @@ var _ = Describe("Storage", func() {
 
 				BeforeEach(func() {
 					nodeName = ""
-					cfgMap, err = virtClient.CoreV1().ConfigMaps(tests.KubeVirtInstallNamespace).Get(kubevirtConfig, metav1.GetOptions{})
+					cfgMap, err = virtClient.CoreV1().ConfigMaps(flags.KubeVirtInstallNamespace).Get(kubevirtConfig, metav1.GetOptions{})
 					Expect(err).ToNot(HaveOccurred())
 					originalFeatureGates = cfgMap.Data[virtconfig.FeatureGatesKey]
 					tests.EnableFeatureGate(virtconfig.HostDiskGate)
@@ -416,7 +418,7 @@ var _ = Describe("Storage", func() {
 						tests.DisableFeatureGate(virtconfig.HostDiskGate)
 					})
 
-					It("Should fail to start a VMI", func() {
+					It("[test_id:4620]Should fail to start a VMI", func() {
 						diskName := "disk-" + uuid.NewRandom().String() + ".img"
 						diskPath := filepath.Join(hostDiskDir, diskName)
 						vmi = tests.NewRandomVMIWithHostDisk(diskPath, v1.HostDiskExistsOrCreate, "")
@@ -608,7 +610,7 @@ var _ = Describe("Storage", func() {
 
 				BeforeEach(func() {
 					By("Enabling the HostDisk feature gate")
-					cfgMap, err = virtClient.CoreV1().ConfigMaps(tests.KubeVirtInstallNamespace).Get(kubevirtConfig, metav1.GetOptions{})
+					cfgMap, err = virtClient.CoreV1().ConfigMaps(flags.KubeVirtInstallNamespace).Get(kubevirtConfig, metav1.GetOptions{})
 					Expect(err).ToNot(HaveOccurred())
 					originalFeatureGates = cfgMap.Data[virtconfig.FeatureGatesKey]
 					tests.EnableFeatureGate(virtconfig.HostDiskGate)
@@ -619,7 +621,7 @@ var _ = Describe("Storage", func() {
 					diskPath = filepath.Join(mountDir, "disk.img")
 					srcDir := filepath.Join(tmpDir, "src")
 					cmd := "mkdir -p " + mountDir + " && mkdir -p " + srcDir + " && chcon -t container_file_t " + srcDir + " && mount --bind " + srcDir + " " + mountDir + " && while true; do sleep 1; done"
-					pod = tests.RenderHostPathJob("host-path-preparator", tmpDir, k8sv1.HostPathDirectoryOrCreate, k8sv1.MountPropagationBidirectional, []string{"/usr/bin/bash", "-c"}, []string{cmd})
+					pod = tests.RenderHostPathPod("host-path-preparator", tmpDir, k8sv1.HostPathDirectoryOrCreate, k8sv1.MountPropagationBidirectional, []string{"/usr/bin/bash", "-c"}, []string{cmd})
 					pod.Spec.Containers[0].Lifecycle = &k8sv1.Lifecycle{
 						PreStop: &k8sv1.Handler{
 							Exec: &k8sv1.ExecAction{
@@ -712,7 +714,7 @@ var _ = Describe("Storage", func() {
 				// Without userdata the hostname isn't set correctly and the login expecter fails...
 				tests.AddUserData(vmi, "cloud-init", "#!/bin/bash\necho 'hello'\n")
 
-				tests.RunVMIAndExpectLaunch(vmi, 90)
+				vmi = tests.RunVMIAndExpectLaunch(vmi, 90)
 
 				By("Checking that the VirtualMachineInstance console has expected output")
 				expecter, err := tests.LoggedInCirrosExpecter(vmi)
@@ -726,10 +728,12 @@ var _ = Describe("Storage", func() {
 			pvName := "test-iscsi-lun" + rand.String(48)
 
 			BeforeEach(func() {
-				tests.SkipIfVersionAboveOrEqual("re-enable this once https://github.com/kubevirt/kubevirt/issues/2272 is fixed", "1.13.3")
+				if tests.IsIPv6Cluster(virtClient) {
+					Skip("Skip ISCSI on IPv6")
+				}
 				// Start a ISCSI POD and service
 				By("Creating a ISCSI POD")
-				iscsiTargetIP := tests.CreateISCSITargetPOD(tests.ContainerDiskAlpine)
+				iscsiTargetIP := tests.CreateISCSITargetPOD(cd.ContainerDiskAlpine)
 				tests.CreateISCSIPvAndPvc(pvName, "1Gi", iscsiTargetIP, k8sv1.ReadWriteMany, k8sv1.PersistentVolumeBlock)
 			})
 

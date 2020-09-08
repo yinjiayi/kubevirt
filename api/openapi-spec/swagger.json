@@ -6626,6 +6626,18 @@
      }
     }
    },
+   "v1.CustomizeComponents": {
+    "type": "object",
+    "properties": {
+     "patches": {
+      "type": "array",
+      "items": {
+       "$ref": "#/definitions/v1.Patch"
+      },
+      "x-kubernetes-list-type": "atomic"
+     }
+    }
+   },
    "v1.DHCPOptions": {
     "description": "Extra DHCP options to use in the interface.",
     "type": "object",
@@ -6757,6 +6769,10 @@
       "description": "Whether to attach the default graphics device or not. VNC will not be available if set to false. Defaults to true.",
       "type": "boolean"
      },
+     "autoattachMemBalloon": {
+      "description": "Whether to attach the Memory balloon device with default period. Period can be adjusted in virt-config. Defaults to true.",
+      "type": "boolean"
+     },
      "autoattachPodInterface": {
       "description": "Whether to attach a pod network interface. Defaults to true.",
       "type": "boolean"
@@ -6841,6 +6857,10 @@
      "floppy": {
       "description": "Attach a volume as a floppy to the vmi.",
       "$ref": "#/definitions/v1.FloppyTarget"
+     },
+     "io": {
+      "description": "IO specifies which QEMU disk IO mode should be used. Supported values are: native, default, threads.",
+      "type": "string"
      },
      "lun": {
       "description": "Attach a volume as a LUN to the vmi.",
@@ -7474,6 +7494,10 @@
      "machineType": {
       "type": "string"
      },
+     "memBalloonStatsPeriod": {
+      "type": "integer",
+      "format": "int32"
+     },
      "migrations": {
       "$ref": "#/definitions/v1.MigrationConfiguration"
      },
@@ -7547,6 +7571,9 @@
       "description": "holds kubevirt configurations. same as the virt-configMap",
       "$ref": "#/definitions/v1.KubeVirtConfiguration"
      },
+     "customizeComponents": {
+      "$ref": "#/definitions/v1.CustomizeComponents"
+     },
      "imagePullPolicy": {
       "description": "The ImagePullPolicy to use.",
       "type": "string"
@@ -7565,6 +7592,14 @@
      },
      "monitorNamespace": {
       "description": "The namespace Prometheus is deployed in Defaults to openshift-monitor",
+      "type": "string"
+     },
+     "productName": {
+      "description": "Designate the apps.kubevirt.io/part-of label for KubeVirt components. Useful if KubeVirt is included as part of a product. If ProductName is not specified, the part-of label will be omitted.",
+      "type": "string"
+     },
+     "productVersion": {
+      "description": "Designate the apps.kubevirt.io/version label for KubeVirt components. Useful if KubeVirt is included as part of a product. If ProductVersion is not specified, KubeVirt's version will be used.",
       "type": "string"
      },
      "uninstallStrategy": {

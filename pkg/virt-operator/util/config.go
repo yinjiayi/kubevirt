@@ -55,10 +55,10 @@ const (
 	AdditionalPropertiesNamePullPolicy = "ImagePullPolicy"
 
 	// lookup key in AdditionalProperties
-	AdditionalPropertiesMonitorNamespace = "monitorNamespace"
+	AdditionalPropertiesMonitorNamespace = "MonitorNamespace"
 
 	// lookup key in AdditionalProperties
-	AdditionalPropertiesMonitorServiceAccount = "monitorAccount"
+	AdditionalPropertiesMonitorServiceAccount = "MonitorAccount"
 
 	// account to use if one is not explicitly named
 	DefaultMonitorNamespace = "openshift-monitoring"
@@ -66,8 +66,10 @@ const (
 	// account to use if one is not explicitly named
 	DefaultMonitorAccount = "prometheus-k8s"
 
-	// lookup key in AdditionalProperties
-	ImagePrefixKey = "imagePrefix"
+	// lookup keys in AdditionalProperties
+	ImagePrefixKey    = "imagePrefix"
+	ProductNameKey    = "productName"
+	ProductVersionKey = "productVersion"
 
 	// the regex used to parse the operator image
 	operatorImageRegex = "^(.*)/(.*)virt-operator([@:].*)?$"
@@ -145,6 +147,13 @@ func GetObservedConfigFromKV(kv *v1.KubeVirt) (*KubeVirtDeploymentConfig, error)
 		return nil, fmt.Errorf("unable to load observed config from kubevirt custom resource: %v", err)
 	}
 	additionalProperties[ImagePrefixKey] = imagePrefix
+	if kv.Spec.ProductName != "" {
+		additionalProperties[ProductNameKey] = kv.Spec.ProductName
+	}
+	if kv.Spec.ProductVersion != "" {
+		additionalProperties[ProductVersionKey] = kv.Spec.ProductVersion
+	}
+
 	return getConfig(kv.Status.ObservedKubeVirtRegistry, kv.Status.ObservedKubeVirtVersion, kv.Namespace, additionalProperties), nil
 }
 
@@ -395,16 +404,16 @@ func (c *KubeVirtDeploymentConfig) GetImagePullPolicy() k8sv1.PullPolicy {
 }
 
 func (c *KubeVirtDeploymentConfig) GetMonitorNamespace() string {
-	p, ok := c.AdditionalProperties[AdditionalPropertiesMonitorNamespace]
-	if !ok {
+	p := c.AdditionalProperties[AdditionalPropertiesMonitorNamespace]
+	if p == "" {
 		return DefaultMonitorNamespace
 	}
 	return p
 }
 
 func (c *KubeVirtDeploymentConfig) GetMonitorServiceAccount() string {
-	p, ok := c.AdditionalProperties[AdditionalPropertiesMonitorServiceAccount]
-	if !ok {
+	p := c.AdditionalProperties[AdditionalPropertiesMonitorServiceAccount]
+	if p == "" {
 		return DefaultMonitorAccount
 	}
 	return p
@@ -417,6 +426,18 @@ func (c *KubeVirtDeploymentConfig) GetNamespace() string {
 func (c *KubeVirtDeploymentConfig) GetVerbosity() string {
 	// not configurable yet
 	return "2"
+}
+
+func (c *KubeVirtDeploymentConfig) GetProductName() string {
+	return c.AdditionalProperties[ProductNameKey]
+}
+
+func (c *KubeVirtDeploymentConfig) GetProductVersion() string {
+	productVersion, ok := c.AdditionalProperties[ProductVersionKey]
+	if !ok {
+		return c.GetKubeVirtVersion()
+	}
+	return productVersion
 }
 
 func (c *KubeVirtDeploymentConfig) generateInstallStrategyID() {

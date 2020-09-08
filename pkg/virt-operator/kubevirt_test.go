@@ -395,6 +395,7 @@ var _ = Describe("KubeVirt Operator", func() {
 		objectMeta.Annotations[v1.InstallStrategyVersionAnnotation] = config.GetKubeVirtVersion()
 		objectMeta.Annotations[v1.InstallStrategyRegistryAnnotation] = config.GetImageRegistry()
 		objectMeta.Annotations[v1.InstallStrategyIdentifierAnnotation] = config.GetDeploymentID()
+		objectMeta.Annotations[v1.KubeVirtGenerationAnnotation] = "1"
 	}
 
 	addKubeVirt := func(kv *v1.KubeVirt) {
@@ -638,12 +639,15 @@ var _ = Describe("KubeVirt Operator", func() {
 		addPodDisruptionBudget(controllerPodDisruptionBudget)
 	}
 
-	addPodsWithOptionalPodDisruptionBudgets := func(config *util.KubeVirtDeploymentConfig, shouldAddPodDisruptionBudgets bool) {
+	addPodsWithIndividualConfigs := func(config *util.KubeVirtDeploymentConfig,
+		configController *util.KubeVirtDeploymentConfig,
+		configHandler *util.KubeVirtDeploymentConfig,
+		shouldAddPodDisruptionBudgets bool) {
 		// we need at least one active pod for
 		// virt-api
 		// virt-controller
 		// virt-handler
-		apiDeployment, _ := components.NewApiServerDeployment(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetApiVersion(), config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
+		apiDeployment, _ := components.NewApiServerDeployment(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetApiVersion(), "", "", config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
 
 		pod := &k8sv1.Pod{
 			ObjectMeta: apiDeployment.Spec.Template.ObjectMeta,
@@ -659,7 +663,7 @@ var _ = Describe("KubeVirt Operator", func() {
 		pod.Name = "virt-api-xxxx"
 		addPod(pod)
 
-		controller, _ := components.NewControllerDeployment(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetControllerVersion(), config.GetLauncherVersion(), config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
+		controller, _ := components.NewControllerDeployment(NAMESPACE, configController.GetImageRegistry(), configController.GetImagePrefix(), configController.GetControllerVersion(), configController.GetLauncherVersion(), "", "", configController.GetImagePullPolicy(), configController.GetVerbosity(), configController.GetExtraEnv())
 		pod = &k8sv1.Pod{
 			ObjectMeta: controller.Spec.Template.ObjectMeta,
 			Spec:       controller.Spec.Template.Spec,
@@ -671,10 +675,10 @@ var _ = Describe("KubeVirt Operator", func() {
 			},
 		}
 		pod.Name = "virt-controller-xxxx"
-		injectMetadata(&pod.ObjectMeta, config)
+		injectMetadata(&pod.ObjectMeta, configController)
 		addPod(pod)
 
-		handler, _ := components.NewHandlerDaemonSet(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetHandlerVersion(), config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
+		handler, _ := components.NewHandlerDaemonSet(NAMESPACE, configHandler.GetImageRegistry(), configHandler.GetImagePrefix(), configHandler.GetHandlerVersion(), "", "", configHandler.GetImagePullPolicy(), configHandler.GetVerbosity(), configHandler.GetExtraEnv())
 		pod = &k8sv1.Pod{
 			ObjectMeta: handler.Spec.Template.ObjectMeta,
 			Spec:       handler.Spec.Template.Spec,
@@ -685,13 +689,17 @@ var _ = Describe("KubeVirt Operator", func() {
 				},
 			},
 		}
-		injectMetadata(&pod.ObjectMeta, config)
+		injectMetadata(&pod.ObjectMeta, configHandler)
 		pod.Name = "virt-handler-xxxx"
 		addPod(pod)
 
 		if shouldAddPodDisruptionBudgets {
 			addPodDisruptionBudgets(config, apiDeployment, controller)
 		}
+	}
+
+	addPodsWithOptionalPodDisruptionBudgets := func(config *util.KubeVirtDeploymentConfig, shouldAddPodDisruptionBudgets bool) {
+		addPodsWithIndividualConfigs(config, config, config, shouldAddPodDisruptionBudgets)
 	}
 
 	addPodsAndPodDisruptionBudgets := func(config *util.KubeVirtDeploymentConfig) {
@@ -845,11 +853,11 @@ var _ = Describe("KubeVirt Operator", func() {
 		all = append(all, components.NewOperatorWebhookService(NAMESPACE))
 		all = append(all, components.NewPrometheusService(NAMESPACE))
 		all = append(all, components.NewApiServerService(NAMESPACE))
-		apiDeployment, _ := components.NewApiServerDeployment(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetApiVersion(), config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
+		apiDeployment, _ := components.NewApiServerDeployment(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetApiVersion(), "", "", config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
 		apiDeploymentPdb := components.NewPodDisruptionBudgetForDeployment(apiDeployment)
-		controller, _ := components.NewControllerDeployment(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetControllerVersion(), config.GetLauncherVersion(), config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
+		controller, _ := components.NewControllerDeployment(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetControllerVersion(), config.GetLauncherVersion(), "", "", config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
 		controllerPdb := components.NewPodDisruptionBudgetForDeployment(controller)
-		handler, _ := components.NewHandlerDaemonSet(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetHandlerVersion(), config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
+		handler, _ := components.NewHandlerDaemonSet(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetHandlerVersion(), "", "", config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
 		all = append(all, apiDeployment, apiDeploymentPdb, controller, controllerPdb, handler)
 
 		all = append(all, rbac.GetAllServiceMonitor(NAMESPACE, config.GetMonitorNamespace(), config.GetMonitorServiceAccount())...)
@@ -1355,7 +1363,7 @@ var _ = Describe("KubeVirt Operator", func() {
 	}
 
 	shouldExpectKubeVirtUpdate := func(times int) {
-		update := kvInterface.EXPECT().Update(gomock.Any())
+		update := kvInterface.EXPECT().UpdateStatus(gomock.Any())
 		update.Do(func(kv *v1.KubeVirt) {
 			kvInformer.GetStore().Update(kv)
 			update.Return(kv, nil)
@@ -1363,7 +1371,7 @@ var _ = Describe("KubeVirt Operator", func() {
 	}
 
 	shouldExpectKubeVirtUpdateVersion := func(times int, config *util.KubeVirtDeploymentConfig) {
-		update := kvInterface.EXPECT().Update(gomock.Any())
+		update := kvInterface.EXPECT().UpdateStatus(gomock.Any())
 		update.Do(func(kv *v1.KubeVirt) {
 
 			Expect(kv.Status.TargetKubeVirtVersion).To(Equal(config.GetKubeVirtVersion()))
@@ -1374,7 +1382,7 @@ var _ = Describe("KubeVirt Operator", func() {
 	}
 
 	shouldExpectKubeVirtUpdateFailureCondition := func(reason string) {
-		update := kvInterface.EXPECT().Update(gomock.Any())
+		update := kvInterface.EXPECT().UpdateStatus(gomock.Any())
 		update.Do(func(kv *v1.KubeVirt) {
 			Expect(len(kv.Status.Conditions)).To(Equal(1))
 			Expect(kv.Status.Conditions[0].Reason).To(Equal(reason))
@@ -1453,8 +1461,9 @@ var _ = Describe("KubeVirt Operator", func() {
 			Expect(err).To(Not(HaveOccurred()), "could not add fake namespace to the store")
 			kv := &v1.KubeVirt{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-install",
-					Namespace: NAMESPACE,
+					Name:       "test-install",
+					Namespace:  NAMESPACE,
+					Generation: int64(1),
 				},
 				Status: v1.KubeVirtStatus{
 					Phase: v1.KubeVirtPhaseDeleted,
@@ -1509,6 +1518,7 @@ var _ = Describe("KubeVirt Operator", func() {
 					Name:       "test-install",
 					Namespace:  NAMESPACE,
 					Finalizers: []string{util.KubeVirtFinalizer},
+					Generation: int64(1),
 				},
 				Spec: v1.KubeVirtSpec{
 					ImageTag: "custom.tag",
@@ -1549,6 +1559,7 @@ var _ = Describe("KubeVirt Operator", func() {
 					Name:       "test-install",
 					Namespace:  NAMESPACE,
 					Finalizers: []string{util.KubeVirtFinalizer},
+					Generation: int64(1),
 				},
 				Status: v1.KubeVirtStatus{
 					Phase:           v1.KubeVirtPhaseDeployed,
@@ -1588,6 +1599,7 @@ var _ = Describe("KubeVirt Operator", func() {
 					Name:       "test-install",
 					Namespace:  NAMESPACE,
 					Finalizers: []string{util.KubeVirtFinalizer},
+					Generation: int64(1),
 				},
 				Status: v1.KubeVirtStatus{
 					Phase:           v1.KubeVirtPhaseDeployed,
@@ -1621,6 +1633,7 @@ var _ = Describe("KubeVirt Operator", func() {
 					Name:       "test-install",
 					Namespace:  NAMESPACE,
 					Finalizers: []string{util.KubeVirtFinalizer},
+					Generation: int64(1),
 				},
 				Status: v1.KubeVirtStatus{
 					Phase:           v1.KubeVirtPhaseDeployed,
@@ -1745,7 +1758,7 @@ var _ = Describe("KubeVirt Operator", func() {
 			envVal := rand.String(10)
 			config.PassthroughEnvVars = map[string]string{envKey: envVal}
 
-			apiDeployment, err := components.NewApiServerDeployment(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetApiVersion(), config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
+			apiDeployment, err := components.NewApiServerDeployment(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetApiVersion(), "", "", config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(apiDeployment.Spec.Template.Spec.Containers[0].Env).To(ContainElement(k8sv1.EnvVar{Name: envKey, Value: envVal}))
@@ -1758,7 +1771,7 @@ var _ = Describe("KubeVirt Operator", func() {
 			envVal := rand.String(10)
 			config.PassthroughEnvVars = map[string]string{envKey: envVal}
 
-			controllerDeployment, err := components.NewControllerDeployment(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetControllerVersion(), config.GetLauncherVersion(), config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
+			controllerDeployment, err := components.NewControllerDeployment(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetControllerVersion(), config.GetLauncherVersion(), "", "", config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(controllerDeployment.Spec.Template.Spec.Containers[0].Env).To(ContainElement(k8sv1.EnvVar{Name: envKey, Value: envVal}))
@@ -1771,7 +1784,7 @@ var _ = Describe("KubeVirt Operator", func() {
 			envVal := rand.String(10)
 			config.PassthroughEnvVars = map[string]string{envKey: envVal}
 
-			handlerDaemonset, err := components.NewHandlerDaemonSet(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetHandlerVersion(), config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
+			handlerDaemonset, err := components.NewHandlerDaemonSet(NAMESPACE, config.GetImageRegistry(), config.GetImagePrefix(), config.GetHandlerVersion(), "", "", config.GetImagePullPolicy(), config.GetVerbosity(), config.GetExtraEnv())
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(handlerDaemonset.Spec.Template.Spec.Containers[0].Env).To(ContainElement(k8sv1.EnvVar{Name: envKey, Value: envVal}))
@@ -2038,7 +2051,7 @@ var _ = Describe("KubeVirt Operator", func() {
 			Expect(resourceChanges["poddisruptionbudgets"][Patched]).To(Equal(1))
 		}, 15)
 
-		It("should pause update until daemonsets and controllers are rolled over.", func(done Done) {
+		It("should pause update after daemonsets are rolled over", func(done Done) {
 			defer close(done)
 
 			updatedConfig := getConfig("otherregistry", "9.9.10")
@@ -2086,14 +2099,84 @@ var _ = Describe("KubeVirt Operator", func() {
 			// conditions should reflect an ongoing update
 			shouldExpectHCOConditions(kv, k8sv1.ConditionTrue, k8sv1.ConditionTrue, k8sv1.ConditionTrue)
 
-			// on update, apiserver won't get patched until daemonset and controller pods are online.
-			// this prevents the new API from coming online until the controllers can manage it.
-
-			// 3 because virt-api, PDB and the namespace are not patched
-			Expect(totalPatches).To(Equal(patchCount - 3))
 			Expect(totalUpdates).To(Equal(updateCount))
 
-			Expect(resourceChanges["poddisruptionbudgets"][Patched]).To(Equal(1))
+			// daemonset, controller and apiserver pods are updated in this order.
+			// this prevents the new API from coming online until the controllers can manage it.
+			// The PDBs will prevent updated pods from getting "ready", so update should pause after
+			//   daemonsets and before controller and namespace
+
+			// 5 because virt-controller, virt-api, PDBs and the namespace are not patched
+			Expect(totalPatches).To(Equal(patchCount - 5))
+
+			// Make sure the 5 unpatched are as expected
+			Expect(resourceChanges["deployments"][Patched]).To(Equal(0))          // virt-controller and virt-api unpatched
+			Expect(resourceChanges["poddisruptionbudgets"][Patched]).To(Equal(0)) // PDBs unpatched
+			Expect(resourceChanges["namespace"][Patched]).To(Equal(0))            // namespace unpatched
+		}, 15)
+
+		It("should pause update after controllers are rolled over", func(done Done) {
+			defer close(done)
+
+			updatedConfig := getConfig("otherregistry", "9.9.10")
+
+			kv := &v1.KubeVirt{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-install",
+					Namespace:  NAMESPACE,
+					Finalizers: []string{util.KubeVirtFinalizer},
+				},
+				Spec: v1.KubeVirtSpec{
+					ImageTag:      updatedConfig.GetKubeVirtVersion(),
+					ImageRegistry: updatedConfig.GetImageRegistry(),
+				},
+				Status: v1.KubeVirtStatus{
+					Phase:           v1.KubeVirtPhaseDeployed,
+					OperatorVersion: version.Get().String(),
+				},
+			}
+			defaultConfig.SetTargetDeploymentConfig(kv)
+			defaultConfig.SetObservedDeploymentConfig(kv)
+			util.UpdateConditionsCreated(kv)
+			util.UpdateConditionsAvailable(kv)
+
+			// create all resources which should already exist
+			kubecontroller.SetLatestApiVersionAnnotation(kv)
+			addKubeVirt(kv)
+			addInstallStrategy(defaultConfig)
+			addInstallStrategy(updatedConfig)
+
+			addAll(defaultConfig)
+			// Create virt-api and virt-controller under defaultConfig,
+			// but use updatedConfig for virt-handler (hack) to avoid pausing after daemonsets
+			addPodsWithIndividualConfigs(defaultConfig, defaultConfig, updatedConfig, true)
+
+			makeApiAndControllerReady()
+			makeHandlerReady()
+
+			addToCache = false
+			shouldExpectRbacBackupCreations()
+			shouldExpectPatchesAndUpdates()
+			shouldExpectKubeVirtUpdate(1)
+
+			controller.Execute()
+
+			kv = getLatestKubeVirt(kv)
+			// conditions should reflect an ongoing update
+			shouldExpectHCOConditions(kv, k8sv1.ConditionTrue, k8sv1.ConditionTrue, k8sv1.ConditionTrue)
+
+			Expect(totalUpdates).To(Equal(updateCount))
+
+			// The update was hacked to avoid pausing after rolling out the daemonsets (virt-handler)
+			// That will allow both daemonset and controller pods to get patched before the pause.
+
+			// 3 because virt-api, PDB and the namespace should not be patched
+			Expect(totalPatches).To(Equal(patchCount - 3))
+
+			// Make sure the 3 unpatched are as expected
+			Expect(resourceChanges["deployments"][Patched]).To(Equal(1))          // virt-operator patched, virt-api unpatched
+			Expect(resourceChanges["poddisruptionbudgets"][Patched]).To(Equal(1)) // 1 of 2 PDBs patched
+			Expect(resourceChanges["namespace"][Patched]).To(Equal(0))            // namespace unpatched
 		}, 15)
 
 		It("should update kubevirt resources when Operator version changes if no imageTag and imageRegistry is explicitly set.", func() {

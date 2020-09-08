@@ -63,20 +63,21 @@ const (
 
 // +k8s:deepcopy-gen=false
 type ConverterContext struct {
-	Architecture      string
-	UseEmulation      bool
-	Secrets           map[string]*k8sv1.Secret
-	VirtualMachine    *v1.VirtualMachineInstance
-	CPUSet            []int
-	IsBlockPVC        map[string]bool
-	IsBlockDV         map[string]bool
-	DiskType          map[string]*containerdisk.DiskInfo
-	SRIOVDevices      map[string][]string
-	SMBios            *cmdv1.SMBios
-	GpuDevices        []string
-	VgpuDevices       []string
-	EmulatorThreadCpu *int
-	OVMFPath          string
+	Architecture          string
+	UseEmulation          bool
+	Secrets               map[string]*k8sv1.Secret
+	VirtualMachine        *v1.VirtualMachineInstance
+	CPUSet                []int
+	IsBlockPVC            map[string]bool
+	IsBlockDV             map[string]bool
+	DiskType              map[string]*containerdisk.DiskInfo
+	SRIOVDevices          map[string][]string
+	SMBios                *cmdv1.SMBios
+	GpuDevices            []string
+	VgpuDevices           []string
+	EmulatorThreadCpu     *int
+	OVMFPath              string
+	MemBalloonStatsPeriod uint
 }
 
 func Convert_v1_Disk_To_api_Disk(diskDevice *v1.Disk, disk *Disk, devicePerBus map[string]int, numQueues *uint) error {
@@ -122,6 +123,7 @@ func Convert_v1_Disk_To_api_Disk(diskDevice *v1.Disk, disk *Disk, devicePerBus m
 	disk.Driver = &DiskDriver{
 		Name:  "qemu",
 		Cache: string(diskDevice.Cache),
+		IO:    string(diskDevice.IO),
 	}
 	if numQueues != nil && disk.Target.Bus == "virtio" {
 		disk.Driver.Queues = numQueues
@@ -487,6 +489,7 @@ func Convert_v1_Clock_To_api_Clock(source *v1.Clock, clock *Clock, c *ConverterC
 		}
 	} else if source.Timezone != nil {
 		clock.Offset = "timezone"
+		clock.Timezone = string(*source.Timezone)
 	}
 
 	if source.Timer != nil {
@@ -589,6 +592,19 @@ func Convert_v1_FeatureHyperv_To_api_FeatureHyperv(source *v1.FeatureHyperv, hyp
 	hyperv.IPI = convertFeatureState(source.IPI)
 	hyperv.EVMCS = convertFeatureState(source.EVMCS)
 	return nil
+}
+
+func ConvertV1ToAPIBalloning(source *v1.Devices, ballooning *MemBalloon, c *ConverterContext) {
+	if source != nil && source.AutoattachMemBalloon != nil && *source.AutoattachMemBalloon == false {
+		ballooning.Model = "none"
+		ballooning.Stats = nil
+	} else {
+		ballooning.Model = "virtio"
+		if c.MemBalloonStatsPeriod != 0 {
+			ballooning.Stats = &Stats{Period: c.MemBalloonStatsPeriod}
+		}
+
+	}
 }
 
 func filterAddress(addrs []string, addr string) []string {
@@ -989,6 +1005,9 @@ func Convert_v1_VirtualMachine_To_api_Domain(vmi *v1.VirtualMachineInstance, dom
 		domain.Spec.Devices.Inputs = inputDevices
 	}
 
+	domain.Spec.Devices.Ballooning = &MemBalloon{}
+	ConvertV1ToAPIBalloning(&vmi.Spec.Domain.Devices, domain.Spec.Devices.Ballooning, c)
+
 	//usb controller is turned on, only when user specify input device with usb bus,
 	//otherwise it is turned off
 	//In ppc64le usb devices like mouse / keyboard are set by default,
@@ -1260,26 +1279,10 @@ func Convert_v1_VirtualMachine_To_api_Domain(vmi *v1.VirtualMachineInstance, dom
 			if iface.Bridge != nil || iface.Masquerade != nil {
 				// TODO:(ihar) consider abstracting interface type conversion /
 				// detection into drivers
-				domainIface.Type = "bridge"
-				if value, ok := cniNetworks[iface.Name]; ok {
-					prefix := ""
-					// no error check, we assume that CNI type was set correctly
-					if net.Multus != nil {
-						if net.Multus.Default {
-							prefix = "eth"
-						} else {
-							prefix = "net"
-						}
-					}
-					domainIface.Source = InterfaceSource{
-						Bridge: fmt.Sprintf("k6t-%s%d", prefix, value),
-					}
-				} else {
-					domainIface.Source = InterfaceSource{
-						Bridge: DefaultBridgeName,
-					}
-				}
 
+				// use "ethernet" interface type, since we're using pre-configured tap devices
+				// https://libvirt.org/formatdomain.html#elementsNICSEthernet
+				domainIface.Type = "ethernet"
 				if iface.BootOrder != nil {
 					domainIface.BootOrder = &BootOrder{Order: *iface.BootOrder}
 				}
@@ -1542,11 +1545,11 @@ func SecretToLibvirtSecret(vmi *v1.VirtualMachineInstance, secretName string) st
 func QuantityToByte(quantity resource.Quantity) (Memory, error) {
 	memorySize, _ := quantity.AsInt64()
 	if memorySize < 0 {
-		return Memory{Unit: "B"}, fmt.Errorf("Memory size '%s' must be greater than or equal to 0", quantity.String())
+		return Memory{Unit: "b"}, fmt.Errorf("Memory size '%s' must be greater than or equal to 0", quantity.String())
 	}
 	return Memory{
 		Value: uint64(memorySize),
-		Unit:  "B",
+		Unit:  "b",
 	}, nil
 }
 
