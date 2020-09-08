@@ -26,6 +26,8 @@ func (d *Defaulter) SetDefaults_OSType(ostype *OSType) {
 	if ostype.Arch == "" {
 		if d.Architecture == "ppc64le" {
 			ostype.Arch = "ppc64le"
+		} else if d.Architecture == "arm64" || d.Architecture == "aarch64" {
+			ostype.Arch = "aarch64"
 		} else {
 			ostype.Arch = "x86_64"
 		}
@@ -36,6 +38,8 @@ func (d *Defaulter) SetDefaults_OSType(ostype *OSType) {
 	if ostype.Machine == "" {
 		if d.Architecture == "ppc64le" {
 			ostype.Machine = "pseries"
+		} else if d.Architecture == "arm64" || d.Architecture == "aarch64" {
+			ostype.Machine = "virt"
 		} else {
 			ostype.Machine = "q35"
 		}

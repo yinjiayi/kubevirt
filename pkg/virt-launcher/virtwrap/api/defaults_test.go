@@ -14,6 +14,7 @@ var _ = Describe("ArchSpecificDefaults", func() {
 		Expect(domain.Spec.OS.Type.Arch).To(Equal(targetArch))
 	},
 		table.Entry("to ppc64le", "ppc64le", "ppc64le"),
+		table.Entry("to aarch64", "aarch64", "aarch64"),
 		table.Entry("to x86_64", "amd64", "x86_64"),
 	)
 
@@ -23,6 +24,7 @@ var _ = Describe("ArchSpecificDefaults", func() {
 		Expect(domain.Spec.OS.Type.Machine).To(Equal(machineType))
 	},
 		table.Entry("to pseries", "ppc64le", "pseries"),
+		table.Entry("to aarch64", "aarch64", "virt"),
 		table.Entry("to q35", "amd64", "q35"),
 	)
 
@@ -33,6 +35,7 @@ var _ = Describe("ArchSpecificDefaults", func() {
 		Expect(domain.Spec.Type).To(Equal("kvm"))
 	},
 		table.Entry("to pseries", "ppc64le"),
+		table.Entry("to virt", "aarch64"),
 		table.Entry("to q35", "amd64"),
 	)
 })

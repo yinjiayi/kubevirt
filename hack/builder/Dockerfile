@@ -2,6 +2,7 @@ ARG ARCH
 FROM ${ARCH}/fedora:31
 
 COPY qemu-ppc64le-static /usr/bin/qemu-ppc64le-static
+COPY qemu-arm64-static /usr/bin/qemu-arm64-static
 
 ENV LIBVIRT_VERSION 5.0.0
 

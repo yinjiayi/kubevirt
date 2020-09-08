@@ -1,3 +1,2 @@
 VERSION=30-6.0.0
-# TODO: reenable ppc64le when new builds are available
-ARCHITECTURES="amd64"
+ARCHITECTURES="amd64 ppc64le arm64"

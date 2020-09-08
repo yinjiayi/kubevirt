@@ -41,10 +41,12 @@ const (
 	MigrationCompletionTimeoutPerGiB         int64  = 800
 	DefaultAMD64MachineType                         = "q35"
 	DefaultPPC64LEMachineType                       = "pseries"
+	DefaultAARCH64MachineType                       = "virt"
 	DefaultCPURequest                               = "100m"
 	DefaultMemoryOvercommit                         = 100
 	DefaultAMD64EmulatedMachines                    = "q35*,pc-q35*"
 	DefaultPPC64LEEmulatedMachines                  = "pseries*"
+	DefaultAARCH64EmulatedMachines                  = "virt*"
 	DefaultLessPVCSpaceToleration                   = 10
 	DefaultNodeSelectors                            = ""
 	DefaultNetworkInterface                         = "bridge"
@@ -58,6 +60,8 @@ const (
 	DefaultPermitBridgeInterfaceOnPodNetwork        = true
 	DefaultSELinuxLauncherType                      = "virt_launcher.process"
 	SupportedGuestAgentVersions                     = "3.*,4.*"
+	DefaultARCHOVMFPath                            = "/usr/share/OVMF"
+	DefaultAARCH64OVMFPath                          = "/usr/share/AAVMF"
 	DefaultOVMFPath                                 = "/usr/share/OVMF"
 	DefaultMemBalloonStatsPeriod                    = 10
 )
@@ -67,10 +71,23 @@ func getDefaultMachinesForArch() (string, string) {
 	if runtime.GOARCH == "ppc64le" {
 		return DefaultPPC64LEMachineType, DefaultPPC64LEEmulatedMachines
 	}
+	if runtime.GOARCH == "arm64" {
+		return DefaultAARCH64MachineType, DefaultAARCH64EmulatedMachines
+	}
 	return DefaultAMD64MachineType, DefaultAMD64EmulatedMachines
 }
 
 var DefaultMachineType, DefaultEmulatedMachines = getDefaultMachinesForArch()
+
+//Set default EFI bootloader Path based on architecture
+func getDefaultOVMFPathForArch() string {
+	if runtime.GOARCH == "arm64" {
+		return DefaultAARCH64OVMFPath
+	}
+	return DefaultARCHOVMFPath
+}
+
+var DefaultOVMFPath = getDefaultOVMFPathForArch()
 
 func (c *ClusterConfig) GetMemBalloonStatsPeriod() int {
 	return c.GetConfig().MemBalloonStatsPeriod
